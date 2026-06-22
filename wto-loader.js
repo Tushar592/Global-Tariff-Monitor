@@ -24,7 +24,7 @@
 export const CONFIG = {
   USE_LIVE: true,                // live is ON; falls back to static until PROXY_URL is set
   // ↓ PASTE your Apps Script "/exec" web-app URL here (see wto-apps-script.gs)
-  PROXY_URL: "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE",
+  PROXY_URL: "https://script.google.com/macros/s/AKfycbzxlMi30TiKl7V7O3TE_POJeERKn6jP2PTSl0reu5aWG7ZBjrrpCA4HcumVgD1xWF9CFA/exec",
   PROXY_MODE: "appsscript",      // "appsscript" → ?path=…  |  "path" → /…  (Vercel/CF)
   SHEET_BACKED: true,            // load all data from the shared Google Sheet (via Apps Script)
   YEARS: "2018:2025",            // range to request; we use the latest available
