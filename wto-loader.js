@@ -24,7 +24,7 @@
 export const CONFIG = {
   USE_LIVE: true,                // live is ON; falls back to static until PROXY_URL is set
   // ↓ PASTE your Apps Script "/exec" web-app URL here (see wto-apps-script.gs)
-  PROXY_URL: "https://script.google.com/macros/s/AKfycbzxlMi30TiKl7V7O3TE_POJeERKn6jP2PTSl0reu5aWG7ZBjrrpCA4HcumVgD1xWF9CFA/exec",
+  PROXY_URL: "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE",
   PROXY_MODE: "appsscript",      // "appsscript" → ?path=…  |  "path" → /…  (Vercel/CF)
   SHEET_BACKED: true,            // load all data from the shared Google Sheet (via Apps Script)
   YEARS: "2018:2025",            // range to request; we use the latest available
@@ -165,6 +165,19 @@ export async function saveSheet(payload) {
     });
     return await res.json();
   } catch (e) { console.warn("Sheet save failed:", e); return { ok: false, reason: String(e) }; }
+}
+
+/* append one record to a data tab (Tariffs / Exemptions / Sectors / Events / Trade) */
+export async function appendRow(tab, row) {
+  if (!proxyReady() || !CONFIG.SHEET_BACKED) return { ok: false, reason: "not configured" };
+  try {
+    const res = await fetch(CONFIG.PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "append", tab, row })
+    });
+    return await res.json();
+  } catch (e) { console.warn("Sheet append failed:", e); return { ok: false, reason: String(e) }; }
 }
 
 /* ---- main entry: merge live MFN over your static data ------------------- */

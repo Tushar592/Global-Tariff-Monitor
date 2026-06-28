@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#ffffff}
+  input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:rgba(26,30,40,.14)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;border:3px solid #c2410c;margin-top:-5.5px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  input[type=range]:disabled::-webkit-slider-thumb{border-color:#c9c1b0;cursor:not-allowed}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#cfc7b6;border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  select{font-family:'Archivo',sans-serif}
+  canvas{touch-action:none}
+  .panel-block{box-shadow:0 4px 18px -8px rgba(20,30,45,.16),0 1px 3px rgba(20,30,45,.06)}
+  .rail-card{box-shadow:0 4px 18px -10px rgba(20,30,45,.16),0 1px 2px rgba(20,30,45,.05)}
+  @media print{
+    @page{ margin:11mm }
+    .no-print{display:none!important}
+    body,html{background:#fff!important}
+    #mainGrid{display:block!important;height:auto!important}
+    #mapStage{height:360px!important;width:100%!important;margin-bottom:14px;break-inside:avoid}
+    #rightRail{margin-top:0!important}
+    #rightRail>div{break-inside:avoid}
+    .lb-scroll{overflow:visible!important;max-height:none!important;height:auto!important}
+    .panel-block{break-inside:avoid;box-shadow:none!important;border:1px solid #d4d7dc!important;page-break-before:auto}
+    .panel-block svg{max-height:300px}
+    *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#ffffff;font-family:'Archivo',system-ui,sans-serif;color:#1a160f;padding:24px 28px 40px">
+  <div style="max-width:1760px;margin:0 auto;display:flex;flex-direction:column">
+
+    <!-- HEADER -->
+    <div style="order:-2;display:flex;flex-direction:column;gap:16px;padding-bottom:0;margin-bottom:18px">
+      <div>
+        <div style="font:600 11px/1 'DM Mono',monospace;letter-spacing:.2em;text-transform:uppercase;color:#c2410c;margin-bottom:10px">Live Trade-Policy Dashboard</div>
+        <h1 style="font:700 36px/0.98 'Bricolage Grotesque','Archivo',sans-serif;margin:0;letter-spacing:-.022em;white-space:nowrap">{{ meta.title }}</h1>
+        <p style="font:400 13.5px/1.4 'Archivo';color:#6b6357;margin:8px 0 0;max-width:560px">{{ meta.subtitle }}</p>
+      </div>
+      <div class="no-print" style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;border-bottom:1px solid #dfe3e8">
+        <div style="display:flex;gap:2px;flex-wrap:wrap">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="6">
+            <button onClick="{{ t.onClick }}" style="font:600 15px 'Archivo';padding:9px 16px;border:none;background:none;color:{{ t.color }};border-bottom:2.5px solid {{ t.line }};margin-bottom:-1px;cursor:pointer">{{ t.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;padding-bottom:6px">
+          <sc-if value="{{ showFocusSel }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #d7dbe0;border-radius:9px;padding:5px 10px">
+              <span style="font:600 13.5px 'DM Mono';letter-spacing:.1em;text-transform:uppercase;color:#8a909c">Focus</span>
+              <select value="{{ focus }}" onChange="{{ onFocus }}" style="font:600 14.5px 'Archivo';border:none;background:transparent;outline:none;cursor:pointer;color:#1a160f">
+                <option value="">— None (Network view) —</option>
+                <sc-for list="{{ focusOptions }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for>
+              </select>
+            </div>
+          </sc-if>
+          <button onClick="{{ onRefresh }}" title="Re-fetch live WTO + Sheet data" style="font:600 16px 'Archivo';padding:8px 14px;border-radius:9px;border:1px solid #d7dbe0;background:#fff;color:#1a160f;cursor:pointer" style-hover="border-color:#c2410c">{{ refreshLabel }}</button>
+          <button onClick="{{ onExport }}" style="font:600 16px 'Archivo';padding:8px 14px;border-radius:9px;border:1px solid #d7dbe0;background:#fff;color:#1a160f;cursor:pointer" style-hover="border-color:#c2410c">↧ PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN GRID -->
+    <div id="mainGrid" style="display:grid;grid-template-columns:1fr 350px;gap:18px;align-items:stretch;height:660px">
+
+      <!-- MAP STAGE -->
+      <div id="mapStage" ref="{{ stageRef }}" style="position:relative;background:#eef3f7;border:1px solid #dcd5c6;border-radius:14px;overflow:hidden;height:660px;box-shadow:0 18px 40px -30px rgba(0,0,0,.35)">
+        <canvas ref="{{ canvasRef }}" style="position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab"></canvas>
+
+        <!-- date / focus badge -->
+        <div style="position:absolute;top:15px;left:16px;background:rgba(255,255,255,.82);backdrop-filter:blur(6px);border:1px solid #dfe6ec;border-radius:10px;padding:9px 13px;box-shadow:0 4px 14px -8px rgba(0,0,0,.3)">
+          <div style="font:500 9px/1 'DM Mono';letter-spacing:.16em;text-transform:uppercase;color:#8a9aa8">Rates as of</div>
+          <div style="font:600 19px/1.1 'Spectral',serif;color:#1a160f;margin-top:4px">{{ scrub.dateLabel }}</div>
+          <div style="font:500 14.5px 'Archivo';color:#c2410c;margin-top:6px">{{ focusBadge }}</div>
+        </div>
+
+        <!-- view + basis toggles -->
+        <div class="no-print" style="position:absolute;top:15px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          <div style="display:flex;background:rgba(255,255,255,.85);border:1px solid #dfe6ec;border-radius:9px;padding:3px;box-shadow:0 4px 14px -8px rgba(0,0,0,.3)">
+            <button onClick="{{ onGlobe }}" style="font:600 15px 'Archivo';padding:6px 12px;border:none;border-radius:7px;cursor:pointer;background:{{ viewGlobeBg }};color:{{ viewGlobeFg }}">◍ 3D</button>
+            <button onClick="{{ onFlat }}" style="font:600 15px 'Archivo';padding:6px 12px;border:none;border-radius:7px;cursor:pointer;background:{{ viewFlatBg }};color:{{ viewFlatFg }}">▭ 2D</button>
+          </div>
+          <div style="background:rgba(255,255,255,.9);border:1px solid #dfe6ec;border-radius:9px;padding:7px 10px;box-shadow:0 4px 14px -8px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:6px;min-width:158px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span style="font:600 13px 'DM Mono';color:#8a9aa8;text-transform:uppercase;letter-spacing:.08em">Theme</span>
+              <select value="{{ themeSel }}" onChange="{{ onTheme }}" style="font:600 14.5px 'Archivo';border:none;background:transparent;outline:none;cursor:pointer;color:#1a160f;text-align:right">
+                <option value="Light">Light</option>
+                <option value="Slate">Slate</option>
+                <option value="Midnight">Midnight</option>
+                <option value="Mono">Mono</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid #eef2f5;padding-top:6px">
+              <span style="font:600 13px 'DM Mono';color:#8a9aa8;text-transform:uppercase;letter-spacing:.08em">Lines</span>
+              <select value="{{ arcSel }}" onChange="{{ onArc }}" style="font:600 14.5px 'Archivo';border:none;background:transparent;outline:none;cursor:pointer;color:#1a160f;text-align:right">
+                <option value="Solid">Solid</option>
+                <option value="Glow">Glow</option>
+                <option value="Dashed">Dashed</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid #eef2f5;padding-top:6px">
+              <span style="font:600 13px 'DM Mono';color:#8a9aa8;text-transform:uppercase;letter-spacing:.08em">Flow</span>
+              <input type="range" min="0" max="2" step="0.1" value="{{ flowSel }}" onInput="{{ onFlow }}" style="width:80px" />
+            </div>
+          </div>
+        </div>
+
+        <!-- network pair builder -->
+        <sc-if value="{{ netBuilderShow }}" hint-placeholder-val="{{ false }}">
+          <div ref="{{ builderRef }}" class="no-print" style="position:absolute;top:112px;left:16px;max-width:70%;display:flex;flex-wrap:wrap;align-items:center;gap:7px;background:rgba(255,255,255,.97);border:1px solid #dfe3e8;border-radius:10px;padding:9px 12px;box-shadow:0 6px 18px -10px rgba(0,0,0,.35);z-index:5">
+            <span style="font:700 13.5px 'DM Mono';text-transform:uppercase;letter-spacing:.08em;color:#c2410c">Pair builder</span>
+            <select value="{{ net.a }}" onChange="{{ net.onA }}" style="font:600 15px 'Archivo';border:1px solid #d7dbe0;border-radius:7px;background:#fff;padding:5px 7px;cursor:pointer;outline:none;color:#1a160f">
+              <option value="">Country A…</option>
+              <sc-for list="{{ net.options }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for>
+            </select>
+            <span style="font:700 14.5px 'Archivo';color:#8a909c">↔</span>
+            <select value="{{ net.b }}" onChange="{{ net.onB }}" style="font:600 15px 'Archivo';border:1px solid #d7dbe0;border-radius:7px;background:#fff;padding:5px 7px;cursor:pointer;outline:none;color:#1a160f">
+              <option value="">Country B…</option>
+              <sc-for list="{{ net.options }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for>
+            </select>
+            <button onClick="{{ net.onAddPair }}" style="font:600 14.5px 'Archivo';padding:6px 11px;border-radius:7px;border:none;background:#c2410c;color:#fff;cursor:pointer">+ Add pair</button>
+            <sc-for list="{{ net.pairs }}" as="p" hint-placeholder-count="0">
+              <span style="display:inline-flex;align-items:center;gap:6px;font:600 14.5px 'DM Mono';background:#eaf1f9;border:1px solid #cfe0f1;border-radius:20px;padding:4px 7px 4px 10px;color:#1a3550">{{ p.label }}<button onClick="{{ p.onRemove }}" style="border:none;background:transparent;color:#7fa0c2;font-size:13px;line-height:1;cursor:pointer;padding:0 2px">×</button></span>
+            </sc-for>
+            <button onClick="{{ net.onClear }}" style="font:600 13.5px 'DM Mono';text-transform:uppercase;color:#94a0ad;background:none;border:none;cursor:pointer;padding:3px">Clear</button>
+            <button onClick="{{ net.onCloseBuilder }}" title="Close" style="border:none;background:#f3f4f6;color:#6b7280;width:22px;height:22px;border-radius:6px;font-size:14px;line-height:1;cursor:pointer">×</button>
+            <span style="flex-basis:100%;font:400 13.5px 'Archivo';color:#8a909c">{{ net.hint }}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ netReopenShow }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ net.onOpenBuilder }}" class="no-print" style="position:absolute;top:112px;left:16px;z-index:5;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.97);border:1px solid #dfe3e8;border-radius:10px;padding:8px 13px;box-shadow:0 6px 18px -10px rgba(0,0,0,.35);font:700 13.5px 'DM Mono';text-transform:uppercase;letter-spacing:.08em;color:#c2410c;cursor:pointer">＋ Pair builder</button>
+        </sc-if>
+
+        <!-- legend -->
+        <div style="position:absolute;bottom:16px;left:16px;background:rgba(255,255,255,.82);backdrop-filter:blur(6px);border:1px solid #dfe6ec;border-radius:10px;padding:9px 12px;width:186px">
+          <div style="font:500 9px/1 'DM Mono';letter-spacing:.14em;text-transform:uppercase;color:#8a9aa8;margin-bottom:7px">Tariff rate</div>
+          <div style="height:8px;border-radius:5px;background:linear-gradient(90deg,#6aa3d6,#54b0a2,#c9a227,#e0762e,#cf3a2c)"></div>
+          <div style="display:flex;justify-content:space-between;font:400 13px 'DM Mono';color:#7c8a98;margin-top:4px"><span>0%</span><span>50%</span><span>100%+</span></div>
+          <div style="display:flex;gap:13px;margin-top:8px;font:400 13.5px 'Archivo';color:#6b6357">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:2.5px;background:#e0762e;display:inline-block"></span>imposed</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:13px;height:2.5px;background:#3b6ea5;display:inline-block"></span>reciprocal</span>
+          </div>
+        </div>
+
+        <!-- interaction hint -->
+
+
+        <!-- event popover -->
+        <sc-if value="{{ evtActive }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;z-index:8;left:{{ evtX }}px;top:{{ evtY }}px;transform:translate(-50%,-115%);width:230px;background:#ffffff;border:1px solid #e6e8ec;border-radius:11px;padding:13px 14px;box-shadow:0 14px 34px -10px rgba(0,0,0,.4)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+              <div style="font:500 13.5px 'DM Mono';letter-spacing:.08em;text-transform:uppercase;color:#c2410c">{{ evt.dateLabel }}</div>
+              <button onClick="{{ onCloseEvent }}" class="no-print" style="border:none;background:transparent;cursor:pointer;color:#8a909c;font-size:15px;line-height:1;padding:0">×</button>
+            </div>
+            <div style="font:600 14px/1.2 'Spectral',serif;color:#1a160f;margin-top:5px">{{ evt.title }}</div>
+            <div style="font:400 11.5px/1.45 'Archivo';color:#6b6357;margin-top:6px">{{ evt.desc }}</div>
+          </div>
+        </sc-if>
+
+        <!-- tooltip -->
+        <div ref="{{ tipRef }}" style="position:absolute;pointer-events:none;opacity:0;transition:opacity .1s;background:#ffffff;border-radius:9px;padding:9px 11px;box-shadow:0 10px 30px -8px rgba(0,0,0,.4);z-index:6;min-width:150px"></div>
+
+      </div>
+
+      <!-- RIGHT RAIL -->
+      <div id="rightRail" style="display:flex;flex-direction:column;gap:13px;min-height:0">
+        <sc-if value="{{ ready }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+          <div class="rail-card" style="background:#ffffff;border:1px solid #e6e8ec;border-radius:12px;padding:13px">
+            <div style="font:500 9px/1 'DM Mono';letter-spacing:.12em;text-transform:uppercase;color:#8a909c">Avg tariff out</div>
+            <div style="font:600 27px/1 'Spectral',serif;color:#c2410c;margin-top:8px">{{ kpi.avgOut }}</div>
+            <div style="font:400 14px 'Archivo';color:#8a909c;margin-top:3px">{{ focusName }} → {{ kpi.count }} partners</div>
+          </div>
+          <div class="rail-card" style="background:#ffffff;border:1px solid #e6e8ec;border-radius:12px;padding:13px">
+            <div style="font:500 9px/1 'DM Mono';letter-spacing:.12em;text-transform:uppercase;color:#8a909c">Trade exposed</div>
+            <div style="font:600 27px/1 'Spectral',serif;color:#1a160f;margin-top:8px">{{ kpi.exposure }}</div>
+            <div style="font:400 14px 'Archivo';color:#8a909c;margin-top:3px">imports under tariff</div>
+          </div>
+        </div>
+        <div class="rail-card" style="background:#13202c;border-radius:12px;padding:13px 15px;color:#f4f1ea">
+          <div style="font:500 9px/1 'DM Mono';letter-spacing:.12em;text-transform:uppercase;color:#7e93a8">Steepest now</div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:7px">
+            <div style="font:600 17px 'Spectral',serif">{{ kpi.topFlag }} {{ kpi.topName }}</div>
+            <div style="font:600 23px 'DM Mono';color:#e8743a">{{ kpi.topPct }}</div>
+          </div>
+        </div>
+
+        <div class="rail-card" style="background:#ffffff;border:1px solid #e6e8ec;border-radius:12px;padding:5px 5px 7px;flex:1;min-height:0;display:flex;flex-direction:column">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 10px 7px">
+            <div style="font:600 16px 'Archivo';color:#1a160f">Tariff leaderboard</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font:500 12.5px 'Archivo';color:#c2410c;font-style:italic">{{ lbHint }}</span>
+              <div style="display:flex;align-items:center;gap:5px">
+              <button onClick="{{ onSelectAllLb }}" style="font:600 13px 'DM Mono';text-transform:uppercase;letter-spacing:.04em;color:#2563eb;background:none;border:none;cursor:pointer;padding:2px 3px" title="Select all">All</button>
+              <span style="color:#d6dae0;font-size:10px">/</span>
+              <button onClick="{{ onClearAllLb }}" style="font:600 13px 'DM Mono';text-transform:uppercase;letter-spacing:.04em;color:#94a0ad;background:none;border:none;cursor:pointer;padding:2px 3px" title="Unselect all">None</button>
+              </div>
+            </div>
+          </div>
+          <div class="lb-scroll" style="overflow-y:auto;flex:1;min-height:0">
+            <sc-for list="{{ leaderboard }}" as="row" hint-placeholder-count="12">
+              <div onClick="{{ row.onSelect }}" style="display:grid;grid-template-columns:18px 14px 19px 1fr 56px;gap:7px;align-items:center;padding:7px 8px;border-radius:9px;cursor:pointer;border-left:3px solid {{ row.edge }};background:{{ row.bg }}" style-hover="background:#eef1f5">
+                <button onClick="{{ row.onToggleActive }}" title="Show / hide on map" style="width:16px;height:16px;border-radius:4px;border:1.5px solid {{ row.checkBorder }};background:{{ row.checkBg }};color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">{{ row.check }}</button>
+                <span style="font:500 14px 'DM Mono';color:#9aa0ab;opacity:{{ row.opacity }}">{{ row.rank }}</span>
+                <span style="font-size:14px;opacity:{{ row.opacity }}">{{ row.flag }}</span>
+                <div style="min-width:0;opacity:{{ row.opacity }}">
+                  <div style="font:600 15.5px 'Archivo';color:#1a160f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.name }}</div>
+                  <div style="height:5px;background:#ece5d6;border-radius:3px;margin-top:5px;overflow:hidden"><div style="height:100%;width:{{ row.barW }}%;background:{{ row.accent }};border-radius:3px"></div></div>
+                </div>
+                <div style="text-align:right;opacity:{{ row.opacity }}">
+                  <div style="font:500 16px 'DM Mono';color:{{ row.accent }}">{{ row.outLabel }}</div>
+                  <div style="font:400 13px 'DM Mono';color:#9aa0ab">↩ {{ row.inLabel }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- DETAIL PANEL -->
+    <sc-if value="{{ showDetail }}" hint-placeholder-val="{{ true }}">
+      <div class="panel-block" style="margin-top:18px;background:#ffffff;border:1px solid #e6e8ec;border-radius:14px;padding:22px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;border-bottom:1px solid #eef0f3;padding-bottom:15px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:13px">
+            <span style="font-size:29px">{{ sel.flag }}</span>
+            <div>
+              <div style="font:600 22px/1 'Spectral',serif">{{ sel.focusName }} <button onClick="{{ onSwap }}" class="no-print" title="Swap direction" style="border:none;background:transparent;color:#c2410c;font:inherit;cursor:pointer;padding:0 3px">⇄</button> {{ sel.name }}</div>
+              <div style="font:400 14.5px 'DM Mono';color:#8a909c;margin-top:5px">{{ sel.mfnNote }} · effective {{ scrub.dateLabel }}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:9px;align-items:stretch">
+            <div style="text-align:center;padding:8px 16px;background:#fbeee6;border-radius:10px">
+              <div style="font:600 13.5px 'DM Mono';letter-spacing:.08em;text-transform:uppercase;color:#c2410c">Tariff applied</div>
+              <div style="font:600 27px 'DM Mono';color:#c2410c;margin-top:3px">{{ sel.effectiveLabel }}</div>
+            </div>
+            <div style="text-align:center;padding:8px 16px;background:#eaf0f6;border-radius:10px">
+              <div style="font:600 13.5px 'DM Mono';letter-spacing:.08em;text-transform:uppercase;color:#3b6ea5">On {{ sel.focusCode }}</div>
+              <div style="font:600 27px 'DM Mono';color:#3b6ea5;margin-top:3px">{{ sel.inLabel }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.55fr 1fr;gap:24px">
+          <!-- chart -->
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+              <div style="font:600 14.5px 'Archivo'">Tariff history</div>
+              <div style="display:flex;gap:16px;font:400 15px 'Archivo';color:#5a5347;flex-wrap:wrap;justify-content:flex-end">
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:3px;background:#c2410c;display:inline-block;border-radius:2px"></span>tariff applied</span>
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:16px;height:3px;background:#3b6ea5;display:inline-block;border-radius:2px"></span>reciprocal</span>
+              </div>
+            </div>
+            <div style="position:relative">
+            <svg viewBox="0 0 660 300" onMouseMove="{{ sel.onChartMove }}" onMouseLeave="{{ sel.onChartLeave }}" style="width:100%;height:auto;display:block;cursor:crosshair">
+              <text x="14" y="115" transform="rotate(-90 14 115)" text-anchor="middle" font-family="Archivo" font-weight="700" font-size="12.5" fill="#5a6470">Tariff rate (%)</text>
+              <text x="356" y="292" text-anchor="middle" font-family="Archivo" font-weight="700" font-size="12.5" fill="#5a6470">Effective date · hover the chart to read any period</text>
+              <line x1="58" x2="58" y1="22" y2="208" stroke="#c4ccd4" stroke-width="1.4"></line>
+              <line x1="58" x2="640" y1="208" y2="208" stroke="#c4ccd4" stroke-width="1.4"></line>
+              <sc-for list="{{ sel.yTicks }}" as="t" hint-placeholder-count="5">
+                <line x1="58" x2="640" y1="{{ t.y }}" y2="{{ t.y }}" stroke="#eef0f3" stroke-width="1"></line>
+              </sc-for>
+              <sc-for list="{{ sel.markerLines }}" as="ml" hint-placeholder-count="3">
+                <line x1="{{ ml.x }}" x2="{{ ml.x }}" y1="18" y2="218" stroke="#dccdb9" stroke-width="1" stroke-dasharray="3 4"></line>
+              </sc-for>
+              <sc-for list="{{ sel.xTicks }}" as="x" hint-placeholder-count="6">
+                <line x1="{{ x.x }}" x2="{{ x.x }}" y1="208" y2="214" stroke="#9aa4ae" stroke-width="1.2"></line>
+              </sc-for>
+              <path d="{{ sel.areaPath }}" fill="#c2410c" fill-opacity="0.07"></path>
+              <sc-for list="{{ sel.extraLines }}" as="el" hint-placeholder-count="0">
+                <path d="{{ el.path }}" fill="none" stroke="{{ el.color }}" stroke-width="2" stroke-linejoin="round" opacity="0.9"></path>
+              </sc-for>
+              <path d="{{ sel.inboundPath }}" fill="none" stroke="#3b6ea5" stroke-width="2.6" stroke-linejoin="round"></path>
+              <path d="{{ sel.effectivePath }}" fill="none" stroke="#c2410c" stroke-width="2.8" stroke-linejoin="round"></path>
+              <sc-for list="{{ sel.dots }}" as="d" hint-placeholder-count="8">
+                <circle cx="{{ d.x }}" cy="{{ d.y }}" r="3" fill="{{ d.color }}" stroke="#ffffff" stroke-width="1.5"></circle>
+              </sc-for>
+              <sc-if value="{{ sel.hoverOn }}" hint-placeholder-val="{{ false }}">
+                <line x1="{{ sel.hoverX }}" x2="{{ sel.hoverX }}" y1="22" y2="208" stroke="#c2410c" stroke-width="1" stroke-dasharray="3 3" stroke-opacity="0.55"></line>
+                <circle cx="{{ sel.hoverX }}" cy="{{ sel.hoverHy }}" r="4.5" fill="#c2410c" stroke="#fff" stroke-width="2"></circle>
+              </sc-if>
+            </svg>
+            <!-- axis tick labels as HTML overlays (reliable glyph layout) -->
+            <sc-for list="{{ sel.yTicks }}" as="t" hint-placeholder-count="5">
+              <div style="position:absolute;left:0;top:{{ t.topPct }}%;width:7.2%;transform:translateY(-50%);text-align:right;font:600 14px 'DM Mono';color:#3a414c;pointer-events:none">{{ t.label }}</div>
+            </sc-for>
+            <sc-for list="{{ sel.xTicks }}" as="x" hint-placeholder-count="6">
+              <div style="position:absolute;left:{{ x.leftPct }}%;top:70.5%;transform:translateX(-50%);font:600 14.5px 'DM Mono';color:#2a2f38;pointer-events:none;white-space:nowrap">{{ x.label }}</div>
+            </sc-for>
+            <sc-if value="{{ sel.hoverOn }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;top:5%;left:{{ sel.hoverLeftPct }}%;transform:{{ sel.hoverShift }};pointer-events:none;background:#fff;border:1px solid #e6e8ec;border-left:3px solid #c2410c;border-radius:10px;box-shadow:0 12px 28px -10px rgba(20,30,45,.3);padding:11px 13px;min-width:150px;z-index:6">
+                <div style="font:600 11px/1 'DM Mono';letter-spacing:.05em;color:#8a909c;margin-bottom:11px">{{ sel.hoverLabel }}</div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:22px"><span style="display:flex;align-items:center;gap:7px;font:500 16px 'Archivo';color:#5a5347"><span style="width:11px;height:3px;background:#c2410c;border-radius:2px"></span>Tariff applied</span><span style="font:600 15.5px 'DM Mono';color:#1a1a1a">{{ sel.hoverEff }}</span></div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:22px"><span style="display:flex;align-items:center;gap:7px;font:500 16px 'Archivo';color:#5a5347"><span style="width:11px;height:3px;background:#3b6ea5;border-radius:2px"></span>Reciprocal</span><span style="font:600 15.5px 'DM Mono';color:#1a1a1a">{{ sel.hoverIn }}</span></div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+          </div>
+
+          <!-- impact / exemptions / sectors -->
+          <div style="display:flex;flex-direction:column;gap:15px">
+            <sc-if value="{{ sel.hasTrade }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <div style="font:600 14.5px 'Archivo';margin-bottom:9px">Trade-weighted impact</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+                  <div style="background:#f5f6f8;border-radius:10px;padding:10px 12px">
+                    <div style="font:400 13.5px 'Archivo';color:#8a909c">Imports from {{ sel.code }}</div>
+                    <div style="font:600 18px 'DM Mono';margin-top:3px">{{ sel.importsLabel }}</div>
+                    <div style="font:500 14.5px 'DM Mono';color:#b4541f;margin-top:5px">≈ {{ sel.exposureOut }} taxed</div>
+                  </div>
+                  <div style="background:#f5f6f8;border-radius:10px;padding:10px 12px">
+                    <div style="font:400 13.5px 'Archivo';color:#8a909c">Exports to {{ sel.code }}</div>
+                    <div style="font:600 18px 'DM Mono';margin-top:3px">{{ sel.exportsLabel }}</div>
+                    <div style="font:500 14.5px 'DM Mono';color:#3b6ea5;margin-top:5px">≈ {{ sel.exposureIn }} taxed</div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ sel.hasExempt }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <div style="font:600 14.5px 'Archivo';margin-bottom:8px">Exemptions &amp; carve-outs <span style="font:400 13.5px 'DM Mono';color:#8a909c">(what lowers the rate)</span></div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <sc-for list="{{ sel.exemptions }}" as="ex" hint-placeholder-count="2">
+                    <div style="display:flex;gap:8px;align-items:flex-start;font:400 11.5px/1.4 'Archivo';color:#5a5347"><span style="color:#c2410c;font-weight:700">·</span>{{ ex }}</div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ sel.hasSectors }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
+                  <div style="font:600 14.5px 'Archivo'">Top imports from {{ sel.name }}</div>
+                  <div style="font:400 13.5px 'DM Mono';color:#8a909c">share</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ sel.sectors }}" as="s" hint-placeholder-count="6">
+                    <div style="display:grid;grid-template-columns:120px 1fr 34px;gap:9px;align-items:center">
+                      <span style="font:400 15px 'Archivo';color:#3a352b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span>
+                      <div style="height:7px;background:#f0ebdf;border-radius:4px;overflow:hidden"><div style="height:100%;width:{{ s.width }}%;background:{{ s.color }};border-radius:4px"></div></div>
+                      <span style="font:500 14px 'DM Mono';color:#6b6357;text-align:right">{{ s.share }}%</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- COMPARE PANEL -->
+    <sc-if value="{{ showCompare }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:18px">
+        <div class="panel-block" style="background:#ffffff;border:1px solid #e6e8ec;border-radius:14px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font:600 14.5px 'Archivo';color:#1a160f">Importer country</span>
+          <select value="{{ cmpHead.imp }}" onChange="{{ cmpHead.onImp }}" style="font:600 14.5px 'Archivo';border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;padding:6px 9px;cursor:pointer;outline:none;color:#1a160f">
+            <sc-for list="{{ cmpHead.options }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for>
+          </select>
+          <span style="font:400 15px 'Archivo';color:#8a909c">charges these partners — add as many as you like:</span>
+          <div style="display:flex;align-items:center;gap:7px;margin-left:auto">
+            <select value="{{ cmpHead.addVal }}" onChange="{{ cmpHead.onAddPick }}" style="font:600 15.5px 'Archivo';border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;padding:6px 9px;cursor:pointer;outline:none;color:#1a160f">
+              <option value="">Add partner…</option>
+              <sc-for list="{{ cmpHead.addOptions }}" as="o" hint-placeholder-count="18"><option value="{{ o.code }}">{{ o.label }}</option></sc-for>
+            </select>
+            <button onClick="{{ cmpHead.onAdd }}" style="font:600 15.5px 'Archivo';padding:7px 13px;border-radius:8px;border:none;background:#c2410c;color:#fff;cursor:pointer">+ Add</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px">
+        <sc-for list="{{ compareCards }}" as="c" hint-placeholder-count="3">
+          <div class="panel-block" style="position:relative;background:#ffffff;border:1px solid #e6e8ec;border-radius:14px;padding:20px 22px">
+            <sc-if value="{{ c.canRemove }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ c.onRemove }}" class="no-print" title="Remove" style="position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:6px;border:1px solid #e6e8ec;background:#fff;color:#9aa0ab;font-size:13px;cursor:pointer;line-height:1" style-hover="border-color:#c2410c;color:#c2410c">×</button>
+            </sc-if>
+            <div style="display:flex;align-items:center;gap:11px;margin-bottom:15px">
+              <span style="font-size:25px">{{ c.flag }}</span>
+              <div style="font:400 15.5px 'Archivo';color:#8a909c">{{ c.focusName }} →</div>
+              <select value="{{ c.code }}" onChange="{{ c.onPick }}" style="font:600 16px 'Spectral',serif;border:none;border-bottom:1.5px solid #d7dbe0;background:transparent;padding:3px 2px;cursor:pointer;outline:none;color:#1a160f">
+                <sc-for list="{{ compareExpOptions }}" as="o" hint-placeholder-count="19"><option value="{{ o.code }}">{{ o.name }}</option></sc-for>
+              </select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:15px">
+              <div style="background:#fbeee6;border-radius:10px;padding:10px 12px">
+                <div style="font:600 13px 'DM Mono';letter-spacing:.06em;text-transform:uppercase;color:#c2410c">Tariff applied</div>
+                <div style="font:600 23px 'DM Mono';color:#c2410c;margin-top:2px">{{ c.effectiveLabel }}</div>
+              </div>
+              <div style="background:#eaf0f6;border-radius:10px;padding:10px 12px">
+                <div style="font:600 13px 'DM Mono';letter-spacing:.06em;text-transform:uppercase;color:#3b6ea5">On {{ c.focusCode }}</div>
+                <div style="font:600 23px 'DM Mono';color:#3b6ea5;margin-top:2px">{{ c.inLabel }}</div>
+              </div>
+            </div>
+            <svg viewBox="0 0 360 92" style="width:100%;height:auto;display:block;margin-bottom:13px">
+              <path d="{{ c.areaPath }}" fill="#c2410c" fill-opacity="0.07"></path>
+              <path d="{{ c.inboundPath }}" fill="none" stroke="#3b6ea5" stroke-width="2" stroke-linejoin="round"></path>
+              <path d="{{ c.effectivePath }}" fill="none" stroke="#c2410c" stroke-width="2.4" stroke-linejoin="round"></path>
+            </svg>
+            <div style="display:flex;justify-content:space-between;font:400 14.5px 'Archivo';color:#6b6357;padding-top:11px;border-top:1px solid #eef0f3">
+              <span>Imports <b style="font-family:'DM Mono';color:#1a160f">{{ c.importsLabel }}</b></span>
+              <span>Exposed <b style="font-family:'DM Mono';color:#b4541f">{{ c.exposureOut }}</b></span>
+              <span>Peak <b style="font-family:'DM Mono';color:#1a160f">{{ c.peakLabel }}</b></span>
+            </div>
+          </div>
+        </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- SCENARIO PANEL -->
+    <sc-if value="{{ showScenario }}" hint-placeholder-val="{{ false }}">
+      <div class="panel-block" style="margin-top:18px;background:#ffffff;border:1px solid #e6e8ec;border-radius:14px;padding:22px 24px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;border-bottom:1px solid #eef0f3;padding-bottom:15px;margin-bottom:18px">
+          <div>
+            <div style="font:600 19px 'Spectral',serif;display:flex;align-items:center;gap:8px;flex-wrap:wrap">Scenario modelling — what if
+              <select value="{{ scen.imp }}" onChange="{{ scen.onImp }}" style="font:600 15px 'Spectral',serif;border:none;border-bottom:1.5px solid #d7dbe0;background:transparent;padding:2px 4px;cursor:pointer;outline:none;color:#c2410c">
+                <sc-for list="{{ scen.options }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for>
+              </select> changes its tariffs?</div>
+            <div style="font:400 15px 'Archivo';color:#6b6357;margin-top:6px;max-width:520px">Drag a slider to set a hypothetical effective rate. The map, leaderboard and the shipment calculator update live. Real rates stay in the data — this is a sandbox.</div>
+          </div>
+          <button onClick="{{ onResetScenario }}" class="no-print" style="font:600 15.5px 'Archivo';padding:9px 15px;border-radius:9px;border:1.5px solid #d7dbe0;background:#ffffff;cursor:pointer" style-hover="border-color:#1a160f">↺ Reset all</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <!-- hypothetical rate sliders (full width) -->
+          <div style="background:#fff;border:1px solid #e6e8ec;border-radius:12px;padding:15px 16px">
+            <div style="font:600 14.5px 'Archivo';margin-bottom:12px">Hypothetical tariff rates <span style="font:400 14.5px 'Archivo';color:#8a909c">— drag any partner to model a what-if</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 28px;max-height:184px;overflow-y:auto;padding-right:6px">
+              <sc-for list="{{ scenarioRows }}" as="r" hint-placeholder-count="8">
+                <div style="display:grid;grid-template-columns:118px 1fr 44px;gap:10px;align-items:center">
+                  <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:14px">{{ r.flag }}</span><span style="font:500 15.5px 'Archivo';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span></div>
+                  <input type="range" min="0" max="150" value="{{ r.valuePct }}" onInput="{{ r.onInput }}" style="width:100%" />
+                  <span style="font:600 14.5px 'DM Mono';color:{{ r.color }};text-align:right">{{ r.valuePct }}%</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- shipment (left) + recommender (right) -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start">
+            <div style="background:#fff;border:1px solid #e6e8ec;border-radius:12px;padding:15px 16px">
+              <div style="font:600 14.5px 'Archivo';margin-bottom:11px">Your shipment — duty impact</div>
+              <div style="display:grid;grid-template-columns:1fr 84px;gap:9px;margin-bottom:9px">
+                <div>
+                  <div style="font:400 13.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Customs value</div>
+                  <input value="{{ calc.amount }}" onInput="{{ calc.onAmount }}" inputmode="decimal" style="width:100%;font:600 15px 'DM Mono';padding:8px 10px;border:1.5px solid #d7dbe0;border-radius:9px;background:#fff;outline:none" style-focus="border-color:#c2410c" />
+                </div>
+                <div>
+                  <div style="font:400 13.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Currency</div>
+                  <select value="{{ calc.currency }}" onChange="{{ calc.onCurrency }}" style="width:100%;font:600 15.5px 'Archivo';padding:8px 6px;border:1.5px solid #d7dbe0;border-radius:9px;background:#fff;outline:none;cursor:pointer">
+                    <sc-for list="{{ calc.currencies }}" as="cu" hint-placeholder-count="7"><option value="{{ cu }}">{{ cu }}</option></sc-for>
+                  </select>
+                </div>
+              </div>
+              <div style="margin-bottom:11px">
+                <div style="font:400 13.5px 'DM Mono';color:#8a909c;margin-bottom:4px">Compare sourcing origins (up to 3)</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">
+                  <select value="{{ calc.origin }}" onChange="{{ calc.onOrigin }}" style="width:100%;font:600 15px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer">
+                    <sc-for list="{{ scenPartnerOptions }}" as="o" hint-placeholder-count="19"><option value="{{ o.code }}">{{ o.name }}</option></sc-for>
+                  </select>
+                  <select value="{{ calc.origin2 }}" onChange="{{ calc.onOrigin2 }}" style="width:100%;font:600 15px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer">
+                    <option value="">— none —</option>
+                    <sc-for list="{{ scenPartnerOptions }}" as="o" hint-placeholder-count="19"><option value="{{ o.code }}">{{ o.name }}</option></sc-for>
+                  </select>
+                  <select value="{{ calc.origin3 }}" onChange="{{ calc.onOrigin3 }}" style="width:100%;font:600 15px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer">
+                    <option value="">— none —</option>
+                    <sc-for list="{{ scenPartnerOptions }}" as="o" hint-placeholder-count="19"><option value="{{ o.code }}">{{ o.name }}</option></sc-for>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:grid;grid-template-columns:1fr 70px 70px 62px;gap:8px;padding:0 11px;font:500 12px 'DM Mono';letter-spacing:.06em;text-transform:uppercase;color:#8a909c">
+                  <span>Origin</span><span style="text-align:right">Duty now</span><span style="text-align:right">Scenario</span><span style="text-align:right">Change</span>
+                </div>
+                <sc-for list="{{ calc.compare }}" as="r" hint-placeholder-count="2">
+                  <div style="display:grid;grid-template-columns:1fr 70px 70px 62px;gap:8px;align-items:center;background:#fff;border:1px solid #e6e8ec;border-radius:9px;padding:9px 11px">
+                    <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:15px">{{ r.flag }}</span><span style="font:600 15.5px 'Archivo';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span></div>
+                    <div style="text-align:right"><div style="font:400 12px 'DM Mono';color:#8a909c">@{{ r.baseRate }}</div><div style="font:600 16px 'DM Mono';color:#1a160f">{{ r.baseDuty }}</div></div>
+                    <div style="text-align:right"><div style="font:400 12px 'DM Mono';color:#b4541f">@{{ r.scenRate }}</div><div style="font:600 16px 'DM Mono';color:#b4541f">{{ r.scenDuty }}</div></div>
+                    <div style="text-align:right;font:600 16px 'DM Mono';color:{{ r.deltaColor }}">{{ r.deltaLabel }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font:400 13.5px 'Archivo';color:#8a909c;margin-top:9px">Duty = customs value × tariff. Drag a partner's slider above to set its scenario rate; add freight/insurance into the value for a landed estimate.</div>
+            </div>
+
+            <!-- recommender (right, white) -->
+            <div style="background:#fff;border:1px solid #e6e8ec;border-radius:12px;padding:15px 16px">
+              <div style="display:flex;align-items:center;gap:7px;margin-bottom:2px"><span style="font-size:13px;color:#c2410c">◎</span><div style="font:600 14.5px 'Archivo';color:#1a1a1a">Alternative-sourcing recommender</div></div>
+              <div style="font:400 14px 'Archivo';color:#8a909c;margin-bottom:12px">Lowest scenario duty on {{ calc.amountLabel }} imported into {{ scen.impName }}</div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <sc-for list="{{ calc.recommend }}" as="r" hint-placeholder-count="6">
+                  <div style="display:grid;grid-template-columns:20px 1fr 50px 96px;gap:9px;align-items:center;padding:8px 10px;border-radius:8px;background:{{ r.rowBg }};border:1px solid {{ r.rowBorder }}">
+                    <span style="font-size:14px">{{ r.flag }}</span>
+                    <span style="font:600 15.5px 'Archivo';color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                    <span style="font:600 15px 'DM Mono';color:{{ r.color }};text-align:right">{{ r.rateLabel }}</span>
+                    <span style="font:600 14px 'DM Mono';color:{{ r.saveColor }};text-align:right">{{ r.saveLabel }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <!-- HS code (bottom, full width) -->
+          <div style="background:#fff;border:1px solid #e6e8ec;border-radius:12px;padding:16px 18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div style="font:600 15.5px 'Archivo'">Product-level duty — HS code <span style="font:400 14.5px 'Archivo';color:#8a909c">est. duty on your {{ calc.amountLabel }} customs value, into {{ calc.hsImpName }}, per sourcing country</span></div>
+              <span style="font:600 13px 'DM Mono';color:#9aa0ab;text-transform:uppercase;letter-spacing:.06em">{{ calc.hsTag }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:230px 1fr;gap:20px;align-items:start">
+              <div>
+                <div style="font:400 13.5px 'DM Mono';color:#8a909c;margin-bottom:4px">HS code or product</div>
+                <input value="{{ calc.hsCode }}" onInput="{{ calc.onHs }}" list="hslist" placeholder="e.g. 8703, 8541, 7208" style="width:100%;font:600 15.5px 'DM Mono';padding:9px 11px;border:1.5px solid #d7dbe0;border-radius:9px;background:#fff;outline:none" style-focus="border-color:#c2410c" />
+                <datalist id="hslist"><sc-for list="{{ calc.hsList }}" as="h" hint-placeholder-count="0"><option value="{{ h.code }}">{{ h.desc }}</option></sc-for></datalist>
+                <div style="font:500 16px 'Archivo';color:#3a414c;margin-top:9px">{{ calc.hsDesc }}</div>
+                <sc-if value="{{ calc.hsHasCode }}" hint-placeholder-val="{{ false }}">
+                  <div style="font:400 13.5px 'Archivo';color:#9aa0ab;margin-top:8px">HS chapter factor <b style="font-family:'DM Mono';color:#5a5347">{{ calc.hsMultLabel }}</b> applied to each country's average rate. Set your sourcing countries in the shipment box above.</div>
+                </sc-if>
+              </div>
+              <sc-if value="{{ calc.hsHasCode }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <div style="display:grid;grid-template-columns:1fr 86px 86px 110px;gap:8px;padding:0 12px 7px;font:600 12.5px 'DM Mono';letter-spacing:.05em;text-transform:uppercase;color:#8a909c">
+                    <span>Sourcing country</span><span style="text-align:right">Country avg</span><span style="text-align:right">Est. rate</span><span style="text-align:right">Est. duty</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <sc-for list="{{ calc.hsRows }}" as="r" hint-placeholder-count="2">
+                      <div style="display:grid;grid-template-columns:1fr 86px 86px 110px;gap:8px;align-items:center;background:#f5f6f8;border-radius:9px;padding:10px 12px">
+                        <div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:15px">{{ r.flag }}</span><span style="font:600 16px 'Archivo';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span></div>
+                        <span style="font:600 14.5px 'DM Mono';color:#1a1a1a;text-align:right">{{ r.avgLabel }}</span>
+                        <span style="font:600 14.5px 'DM Mono';color:#c2410c;text-align:right">{{ r.rateLabel }}</span>
+                        <span style="font:600 15.5px 'DM Mono';color:#1a1a1a;text-align:right">{{ r.dutyLabel }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="font:400 13.5px 'Archivo';color:#9aa0ab;margin-top:10px">Est. rate = country-average × an illustrative per-chapter factor. <b>Connect the live feed</b> (Manage ▸ note) for exact per-HS duties from WTO / WITS.</div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- GUIDE PANEL -->
+    <sc-if value="{{ showGuide }}" hint-placeholder-val="{{ false }}">
+      <div class="panel-block no-print" style="order:-1;margin-top:0;margin-bottom:18px;background:#ffffff;border:1px solid #e6e8ec;border-radius:14px;padding:24px 26px">
+        <div style="font:600 20px 'Spectral',serif;margin-bottom:4px">How to use this monitor</div>
+        <div style="font:400 15.5px 'Archivo';color:#6b6357;margin-bottom:18px;max-width:640px">A quick tour, then a glossary of every term used across the dashboard.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:26px">
+          <div>
+            <div style="font:600 15.5px 'DM Mono';letter-spacing:.1em;text-transform:uppercase;color:#c2410c;margin-bottom:12px">Getting around</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ guideSteps }}" as="g" hint-placeholder-count="6">
+                <div style="display:grid;grid-template-columns:26px 1fr;gap:11px;align-items:start">
+                  <div style="width:26px;height:26px;border-radius:50%;background:#fbeee6;color:#c2410c;font:600 15.5px 'DM Mono';display:flex;align-items:center;justify-content:center">{{ g.n }}</div>
+                  <div><div style="font:600 14.5px 'Archivo';color:#1a160f">{{ g.title }}</div><div style="font:400 11.5px/1.5 'Archivo';color:#6b6357;margin-top:2px">{{ g.body }}</div></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div>
+            <div style="font:600 15.5px 'DM Mono';letter-spacing:.1em;text-transform:uppercase;color:#3b6ea5;margin-bottom:12px">Glossary</div>
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ glossary }}" as="gl" hint-placeholder-count="8">
+                <div style="border-left:3px solid #e6e8ec;padding-left:11px"><div style="font:600 16px 'Archivo';color:#1a160f">{{ gl.term }}</div><div style="font:400 11.5px/1.5 'Archivo';color:#6b6357;margin-top:1px">{{ gl.def }}</div></div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ADMIN PANEL -->
+    <sc-if value="{{ showAdmin }}" hint-placeholder-val="{{ false }}">
+      <div class="panel-block no-print" style="order:-1;margin-top:0;margin-bottom:18px;background:#ffffff;border:1px solid #e6e8ec;border-radius:14px;padding:24px 26px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;border-bottom:1px solid #eef0f3;padding-bottom:15px;margin-bottom:16px">
+          <div>
+            <div style="font:600 20px 'Spectral',serif">Manage countries</div>
+            <div style="font:400 15px 'Archivo';color:#6b6357;margin-top:5px;max-width:560px">Show or hide countries, edit their baseline MFN rate, or add a new one. Changes are saved in this browser. Tariff-war numbers &amp; sectors live in <b style="font-family:'DM Mono'">tariff-data.js</b>.</div>
+
+          </div>
+          <button onClick="{{ onResetAdmin }}" class="no-print" style="font:600 15.5px 'Archivo';padding:9px 15px;border-radius:9px;border:1.5px solid #d7dbe0;background:#ffffff;cursor:pointer" style-hover="border-color:#1a160f">↺ Restore defaults</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:26px">
+          <!-- list -->
+          <div style="max-height:340px;overflow-y:auto;padding-right:6px">
+            <div style="display:grid;grid-template-columns:24px 1fr 92px 30px;gap:8px;font:500 13px 'DM Mono';letter-spacing:.08em;text-transform:uppercase;color:#8a909c;padding:0 4px 7px">
+              <span>On</span><span>Country</span><span>MFN %</span><span></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <sc-for list="{{ adminRows }}" as="a" hint-placeholder-count="20">
+                <div style="display:grid;grid-template-columns:24px 1fr 92px 30px;gap:8px;align-items:center;padding:5px 4px;border-radius:8px;background:{{ a.rowBg }}">
+                  <button onClick="{{ a.onToggle }}" style="width:18px;height:18px;border-radius:5px;border:1.5px solid {{ a.checkBorder }};background:{{ a.checkBg }};color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">{{ a.check }}</button>
+                  <div style="display:flex;align-items:center;gap:7px;min-width:0;opacity:{{ a.opacity }}"><span style="font-size:14px">{{ a.flag }}</span><span style="font:500 16px 'Archivo';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.name }}</span><span style="font:400 13.5px 'DM Mono';color:#9aa0ab">{{ a.code }}</span></div>
+                  <input value="{{ a.mfn }}" onInput="{{ a.onMfn }}" inputmode="decimal" style="width:100%;font:500 15.5px 'DM Mono';padding:5px 7px;border:1.5px solid #e0d8c7;border-radius:7px;background:#fff;outline:none" style-focus="border-color:#c2410c" />
+                  <button onClick="{{ a.onRemove }}" class="no-print" title="Remove" style="border:none;background:transparent;color:#c99;font-size:15px;cursor:pointer;padding:0" style-hover="color:#c2410c">{{ a.removeIcon }}</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <!-- add form -->
+          <div style="background:#f5f6f8;border:1px solid #e6e8ec;border-radius:12px;padding:16px 17px;align-self:start">
+            <div style="font:600 15px 'Archivo';margin-bottom:10px">Add a country</div>
+            <div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:4px">Pick from the world list</div>
+            <div style="display:flex;gap:8px;margin-bottom:14px">
+              <select value="{{ draft.pick }}" onChange="{{ draft.onPick }}" style="flex:1;font:600 14px 'Archivo';padding:8px 9px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer">
+                <option value="">Choose a country…</option>
+                <sc-for list="{{ draft.worldOptions }}" as="o" hint-placeholder-count="0"><option value="{{ o.code }}">{{ o.label }}</option></sc-for>
+              </select>
+              <button onClick="{{ draft.onAddWorld }}" style="font:600 14px 'Archivo';padding:8px 15px;border-radius:8px;border:none;background:#c2410c;color:#fff;cursor:pointer;white-space:nowrap">+ Add</button>
+            </div>
+            <div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:8px;border-top:1px solid #e6e8ec;padding-top:11px">…or enter manually</div>
+            <div style="display:grid;grid-template-columns:1fr 70px;gap:9px;margin-bottom:9px">
+              <div><div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Name</div><input value="{{ draft.name }}" onInput="{{ draft.onName }}" placeholder="e.g. Norway" style="width:100%;font:500 15px 'Archivo';padding:7px 9px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" style-focus="border-color:#c2410c" /></div>
+              <div><div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Code</div><input value="{{ draft.code }}" onInput="{{ draft.onCode }}" placeholder="NOR" maxlength="4" style="width:100%;font:600 15px 'DM Mono';padding:7px 8px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;text-transform:uppercase" style-focus="border-color:#c2410c" /></div>
+            </div>
+            <div style="display:grid;grid-template-columns:54px 1fr 1fr;gap:9px;margin-bottom:9px">
+              <div><div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Flag</div><input value="{{ draft.flag }}" onInput="{{ draft.onFlag }}" placeholder="🇳🇴" style="width:100%;font:500 15px 'Archivo';padding:6px 8px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;text-align:center" /></div>
+              <div><div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Longitude</div><input value="{{ draft.lon }}" onInput="{{ draft.onLon }}" inputmode="decimal" placeholder="8" style="width:100%;font:500 15px 'DM Mono';padding:7px 8px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+              <div><div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Latitude</div><input value="{{ draft.lat }}" onInput="{{ draft.onLat }}" inputmode="decimal" placeholder="61" style="width:100%;font:500 15px 'DM Mono';padding:7px 8px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
+              <div><div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:3px">MFN tariff %</div><input value="{{ draft.mfn }}" onInput="{{ draft.onMfn }}" inputmode="decimal" placeholder="4.0" style="width:100%;font:500 15px 'DM Mono';padding:7px 8px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+              <div><div style="font:400 12.5px 'DM Mono';color:#8a909c;margin-bottom:3px">Imports $B</div><input value="{{ draft.imports }}" onInput="{{ draft.onImports }}" inputmode="decimal" placeholder="120" style="width:100%;font:500 15px 'DM Mono';padding:7px 8px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+            </div>
+            <button onClick="{{ draft.onAdd }}" style="width:100%;font:600 14.5px 'Archivo';padding:10px;border-radius:9px;border:none;background:#1a160f;color:#fff;cursor:pointer">+ Add manually</button>
+            <div style="font:400 13px 'Archivo';color:{{ draft.msgColor }};margin-top:9px;min-height:14px">{{ draft.msg }}</div>
+          </div>
+        </div>
+
+        <!-- bilateral data editor (saves to the shared Sheet) -->
+        <div style="border-top:1px solid #eef0f3;margin-top:20px;padding-top:18px">
+          <div style="font:600 16px 'Spectral',serif;margin-bottom:3px">Add tariff data <span style="font:400 13px 'Archivo';color:#8a909c">— saved to the shared Google Sheet</span></div>
+          <div style="font:400 12.5px 'Archivo';color:#8a909c;margin-bottom:16px">{{ entry.statusMsg }}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+
+            <!-- bilateral tariff -->
+            <div style="background:#fff;border:1px solid #e6e8ec;border-radius:12px;padding:15px 16px">
+              <div style="font:600 14px 'Archivo';margin-bottom:11px">① Bilateral tariff</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Importer</div>
+                  <select value="{{ entry.imp }}" onChange="{{ entry.onImp }}" style="width:100%;font:600 13px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer"><sc-for list="{{ entry.countryOptions }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for></select></div>
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Exporter</div>
+                  <select value="{{ entry.exp }}" onChange="{{ entry.onExp }}" style="width:100%;font:600 13px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer"><sc-for list="{{ entry.countryOptions }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for></select></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:8px;margin-bottom:12px">
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Date</div><input value="{{ entry.date }}" onInput="{{ entry.onDate }}" placeholder="2025-09-01" style="width:100%;font:500 13px 'DM Mono';padding:7px 7px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Tariff %</div><input value="{{ entry.headline }}" onInput="{{ entry.onHeadline }}" inputmode="decimal" placeholder="25" style="width:100%;font:500 13px 'DM Mono';padding:7px 7px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+              </div>
+              <button onClick="{{ entry.onAddTariff }}" style="width:100%;font:600 13.5px 'Archivo';padding:9px;border-radius:8px;border:none;background:#c2410c;color:#fff;cursor:pointer">Save tariff to sheet</button>
+            </div>
+
+            <!-- exemption / carve-out -->
+            <div style="background:#fff;border:1px solid #e6e8ec;border-radius:12px;padding:15px 16px">
+              <div style="font:600 14px 'Archivo';margin-bottom:11px">② Exemption / carve-out</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Importer</div>
+                  <select value="{{ entry.exImp }}" onChange="{{ entry.onExImp }}" style="width:100%;font:600 13px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer"><sc-for list="{{ entry.countryOptions }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for></select></div>
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Exporter</div>
+                  <select value="{{ entry.exExp }}" onChange="{{ entry.onExExp }}" style="width:100%;font:600 13px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer"><sc-for list="{{ entry.countryOptions }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for></select></div>
+              </div>
+              <div style="margin-bottom:12px"><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Note</div><input value="{{ entry.exNote }}" onInput="{{ entry.onExNote }}" placeholder="e.g. Semiconductors exempted" style="width:100%;font:500 13px 'Archivo';padding:7px 9px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+              <button onClick="{{ entry.onAddExempt }}" style="width:100%;font:600 13.5px 'Archivo';padding:9px;border-radius:8px;border:none;background:#c2410c;color:#fff;cursor:pointer">Save exemption to sheet</button>
+            </div>
+
+            <!-- event -->
+            <div style="background:#fff;border:1px solid #e6e8ec;border-radius:12px;padding:15px 16px">
+              <div style="font:600 14px 'Archivo';margin-bottom:11px">③ Timeline event</div>
+              <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:8px;margin-bottom:8px">
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Date</div><input value="{{ entry.evDate }}" onInput="{{ entry.onEvDate }}" placeholder="2025-09-01" style="width:100%;font:500 13px 'DM Mono';padding:7px 7px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+                <div><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Country</div>
+                  <select value="{{ entry.evCode }}" onChange="{{ entry.onEvCode }}" style="width:100%;font:600 13px 'Archivo';padding:7px 6px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none;cursor:pointer"><sc-for list="{{ entry.countryOptions }}" as="o" hint-placeholder-count="20"><option value="{{ o.code }}">{{ o.label }}</option></sc-for></select></div>
+              </div>
+              <div style="margin-bottom:7px"><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Title</div><input value="{{ entry.evTitle }}" onInput="{{ entry.onEvTitle }}" placeholder="e.g. New reciprocal round" style="width:100%;font:500 13px 'Archivo';padding:7px 9px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+              <div style="margin-bottom:12px"><div style="font:400 12px 'DM Mono';color:#8a909c;margin-bottom:3px">Description</div><input value="{{ entry.evDesc }}" onInput="{{ entry.onEvDesc }}" placeholder="short note" style="width:100%;font:500 13px 'Archivo';padding:7px 9px;border:1.5px solid #d7dbe0;border-radius:8px;background:#fff;outline:none" /></div>
+              <button onClick="{{ entry.onAddEvent }}" style="width:100%;font:600 13.5px 'Archivo';padding:9px;border-radius:8px;border:none;background:#c2410c;color:#fff;cursor:pointer">Save event to sheet</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- FOOTER -->
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #ddd4c3;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font:400 14.5px 'Archivo';color:#8a909c">
+      <span>{{ meta.source }} · last update {{ meta.lastUpdate }}</span>
+      <span>Baseline = WTO applied-MFN averages; bold pairs carry 2024–25 trade-war measures. Trade &amp; sector figures illustrative — edit in <b style="font-family:'DM Mono'">tariff-data.js</b>. Live: WTO Timeseries API v1.</span>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1500,&quot;height&quot;:980},&quot;mapTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Light&quot;,&quot;Slate&quot;,&quot;Midnight&quot;,&quot;Mono&quot;],&quot;default&quot;:&quot;Light&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;arcStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Solid&quot;,&quot;Glow&quot;,&quot;Dashed&quot;],&quot;default&quot;:&quot;Solid&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;flowSpeed&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;min&quot;:0,&quot;max&quot;:2,&quot;step&quot;:0.1,&quot;default&quot;:1,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { ready:false, focus:'USA', selected:'CHN', viewMode:'globe', basis:'effective', mapThemeSel:null, arcStyleSel:null, flowSel:null,
+            scrubIdx:0, playing:false, query:'', panel:'detail', noFocus:false, compareB:'IND', compareSet:['CHN','IND','MEX'], compareAdd:'', scenario:{}, activeEvent:null, swap:false,
+            chartExtra:[],
+            calc:{amount:'100000', currency:'USD', origin:'CHN', origin2:'IND', origin3:''}, netMode:false, netSet:[], netPick:'', netBuilderOpen:true, netPairs:[], netA:'', netB:'', hsCode:'', scenImp:'', compareImp:'', chartHoverX:null,
+            removed:{}, mfnOver:{}, customList:[],
+            draft:{name:'',code:'',flag:'',lon:'',lat:'',mfn:'',imports:'',msg:'',ok:false,pick:''},
+            entry:{imp:'USA',exp:'CHN',date:'',headline:'',effective:'',exImp:'USA',exExp:'CHN',exNote:'',evDate:'',evCode:'USA',evTitle:'',evDesc:'',msg:''} };
+
+  constructor(props){
+    super(props);
+    this.canvasRef=(el)=>{ this.canvas=el; if(el) this.tryInitMap(); };
+    this.stageRef=(el)=>{ this.stage=el; };
+    this.tipRef=(el)=>{ this.tip=el; };
+    this.onResize=()=>{ if(this.inited) this.resize(); };
+    this.onBeforePrint=()=>{ setTimeout(()=>this.resize(),30); };
+    this.rot=[98,-20]; this.rotTarget=null; this.globeZoom=1; this.flat={k:1,tx:0,ty:0};
+    this.t=0; this.down=false; this.moved=false; this.hoverCode=null;
+    this.PAL=['#2563eb','#0d9488','#7c3aed','#ca8a04','#db2777','#15803d','#475569'];
+    this.CUR={USD:1,EUR:0.92,GBP:0.79,INR:83,CNY:7.2,JPY:156,AED:3.67};
+    this.SYM={USD:'$',EUR:'€',GBP:'£',INR:'₹',CNY:'¥',JPY:'¥',AED:'AED '};
+    this.HS={
+      '84':'Ch.84 — Machinery & mechanical appliances','8471':'8471 · Computers & data-processing machines','847130':'8471.30 · Laptops & portable computers','847150':'8471.50 · Servers & processing units','8473':'8473 · Parts for computers & office machines','8481':'8481 · Valves, taps & similar appliances','8414':'8414 · Pumps & compressors',
+      '85':'Ch.85 — Electrical machinery & electronics','8517':'8517 · Phones & telecom equipment','851713':'8517.13 · Smartphones','851762':'8517.62 · Network & base-station gear','8528':'8528 · Monitors, TVs & projectors','8541':'8541 · Semiconductors, diodes & LEDs','854142':'8541.42 · Photovoltaic / solar cells','8542':'8542 · Integrated circuits (chips)','8507':'8507 · Batteries & accumulators','850760':'8507.60 · Lithium-ion batteries','8544':'8544 · Insulated wire & cable',
+      '87':'Ch.87 — Vehicles','8703':'8703 · Motor cars & passenger vehicles','870321':'8703.21 · Small petrol cars (≤1000cc)','870380':'8703.80 · Electric vehicles (EV)','8708':'8708 · Motor-vehicle parts','870840':'8708.40 · Gearboxes & parts','8711':'8711 · Motorcycles','8714':'8714 · Bicycle & motorcycle parts',
+      '88':'Ch.88 — Aircraft & spacecraft','8806':'8806 · Unmanned aircraft (drones)','8802':'8802 · Aircraft & helicopters',
+      '72':'Ch.72 — Iron & steel','7208':'7208 · Flat-rolled steel, hot-rolled','7209':'7209 · Flat-rolled steel, cold-rolled','7210':'7210 · Coated / plated steel','7219':'7219 · Stainless-steel sheet',
+      '73':'Ch.73 — Articles of iron or steel','7318':'7318 · Screws, bolts & fasteners','7326':'7326 · Other steel articles',
+      '76':'Ch.76 — Aluminium','7601':'7601 · Unwrought aluminium','7604':'7604 · Aluminium bars & profiles','7606':'7606 · Aluminium plate & sheet',
+      '39':'Ch.39 — Plastics','3901':'3901 · Polymers of ethylene','3923':'3923 · Plastic packaging & containers','3926':'3926 · Other plastic articles',
+      '29':'Ch.29 — Organic chemicals','30':'Ch.30 — Pharmaceuticals','3004':'3004 · Medicaments, packaged for retail','300490':'3004.90 · Other formulated medicines','3002':'3002 · Vaccines, blood & antisera',
+      '61':'Ch.61 — Apparel, knitted','6109':'6109 · T-shirts & knit vests','6110':'6110 · Sweaters & pullovers','62':'Ch.62 — Apparel, woven','6203':'6203 · Men’s suits & trousers','6204':'6204 · Women’s suits & dresses',
+      '64':'Ch.64 — Footwear','6403':'6403 · Leather footwear','6404':'6404 · Textile footwear (sneakers)',
+      '94':'Ch.94 — Furniture & bedding','9401':'9401 · Seats & chairs','9403':'9403 · Other furniture','9405':'9405 · Lamps & lighting',
+      '95':'Ch.95 — Toys & games','9503':'9503 · Toys, models & puzzles',
+      '90':'Ch.90 — Optical, medical & precision','9018':'9018 · Medical & surgical instruments','9013':'9013 · LCD / optical devices',
+      '71':'Ch.71 — Gems & precious metals','7113':'7113 · Jewellery of precious metal','7102':'7102 · Diamonds',
+      '10':'Ch.10 — Cereals','1006':'1006 · Rice','1001':'1001 · Wheat','09':'Ch.09 — Coffee, tea & spices','0901':'0901 · Coffee','0902':'0902 · Tea',
+      '22':'Ch.22 — Beverages','2204':'2204 · Wine','2208':'2208 · Spirits & liqueurs','27':'Ch.27 — Mineral fuels & oil','2709':'2709 · Crude petroleum oils','2710':'2710 · Refined petroleum oils'
+    };
+    // illustrative per-chapter tariff multiplier vs the country average (until live HS data)
+    this.HS_MULT={'87':1.6,'8703':1.7,'870380':0.9,'72':1.9,'73':1.4,'76':1.7,'85':0.7,'8541':0.2,'854142':1.3,'84':0.8,'88':0.3,'61':1.5,'62':1.5,'64':1.4,'94':1.3,'95':1.2,'30':0.3,'71':1.1,'22':1.3,'27':0.6};
+  }
+
+  componentDidMount(){
+    this.mounted=true;
+    window.addEventListener('resize', this.onResize);
+    window.addEventListener('beforeprint', this.onBeforePrint);
+    this.onDocDown=(e)=>{ if(this.state.netMode && this.state.netBuilderOpen && this.builderEl && !this.builderEl.contains(e.target)){ this.setState({netBuilderOpen:false}); } };
+    document.addEventListener('pointerdown', this.onDocDown, true);
+    import('./tariff-data.js').then(async (m)=>{
+      // 1) shared Google Sheet (everyone's source of truth) 2) live WTO MFN 3) static file
+      let data=m;
+      try{ const live=await import('./wto-loader.js');
+        const sheet=await live.loadSheet(m);
+        data = sheet ? Object.assign({}, m, sheet) : await live.loadLive(m);
+      }catch(e){ console.warn('live/sheet load failed, using tariff-data.js', e); }
+      this.META=data.META; this.baseC=data.COUNTRIES; this.OVR=data.OVERRIDES; this.EV=data.EVENTS;
+      this.sheetBacked = data!==m && !!(data.COUNTRIES);
+      try{ const w=await import('./world-countries.js'); this.WORLD=w.WORLD; }catch(e){ this.WORLD=[]; }
+      let saved={}; try{ saved=JSON.parse(localStorage.getItem('tariffmon_admin')||'{}'); }catch(e){}
+      const removed=saved.removed||{}, mfnOver=saved.mfnOver||{}, customList=saved.customList||[];
+      this.prep(removed,mfnOver,customList);
+      this.setState({ ready:true, focus:this.META.defaultFocus||'USA', scrubIdx:this.allDates.length-1, removed, mfnOver, customList },
+        ()=>{ this.aimAtFocus(this.state.focus,true); this.bootMap(); });
+    }).catch(e=>console.error('data load failed', e));
+  }
+  componentWillUnmount(){ this.mounted=false; cancelAnimationFrame(this.raf); clearInterval(this.playTimer); window.removeEventListener('resize', this.onResize); window.removeEventListener('beforeprint', this.onBeforePrint); document.removeEventListener('pointerdown', this.onDocDown, true); }
+
+  prep(removed,mfnOver,customList){
+    this.rebuild(removed||this.state.removed, mfnOver||this.state.mfnOver, customList||this.state.customList);
+    const set=new Set();
+    Object.values(this.OVR).forEach(o=>o.events.forEach(e=>set.add(e.d)));
+    this.allDates=[...set].sort();
+    this.tMin=Date.parse(this.allDates[0]); this.tMax=Date.parse(this.allDates[this.allDates.length-1]);
+    this.nameToCode={'United States of America':'USA','China':'CHN','India':'IND','Japan':'JPN','South Korea':'KOR','United Kingdom':'GBR','Canada':'CAN','Mexico':'MEX','Brazil':'BRA','Australia':'AUS','Vietnam':'VNM','Thailand':'THA','Taiwan':'TWN','Indonesia':'IDN','Turkey':'TUR','Switzerland':'CHE','Saudi Arabia':'SAU','South Africa':'ZAF','Tunisia':'TUN'};
+  }
+  rebuild(removed,mfnOver,customList){
+    const all=[...this.baseC, ...(customList||[])].map(c=> (mfnOver&&mfnOver[c.code]!=null)? Object.assign({},c,{mfn:mfnOver[c.code]}) : c);
+    this.allList=all;                                  // every country (for the leaderboard list + lookups)
+    this.byCode={}; all.forEach(c=>this.byCode[c.code]=c);
+    this.C=all.filter(c=>!(removed&&removed[c.code]));  // active only (drawn on the map, counted in KPIs)
+    this.buildColors();
+  }
+  buildColors(){ this.cColor={}; let i=0; (this.allList||[]).forEach(c=>{ if(c.code==='IND'){ this.cColor[c.code]='#e8731f'; } else { const hue=(i*53+18)%360; this.cColor[c.code]='hsl('+hue+',56%,57%)'; i++; } }); }
+  persist(removed,mfnOver,customList){
+    try{ localStorage.setItem('tariffmon_admin', JSON.stringify({removed,mfnOver,customList})); }catch(e){}
+    // if the shared Sheet is connected, push country edits to the cloud so everyone sees them
+    if(this.sheetBacked){
+      clearTimeout(this._saveTimer);
+      this._saveTimer=setTimeout(()=>{
+        const countries=(this.allList||[]).filter(c=>!removed[c.code]).map(c=>({code:c.code,name:c.name,flag:c.flag,coord:c.coord,mfn:(mfnOver[c.code]!=null?mfnOver[c.code]:c.mfn),imports:c.imports}));
+        import('./wto-loader.js').then(live=>{ if(live.saveSheet) live.saveSheet({countries}); }).catch(()=>{});
+      },800);
+    }
+  }
+  applyAdmin(patch){
+    const next=Object.assign({removed:this.state.removed,mfnOver:this.state.mfnOver,customList:this.state.customList}, patch);
+    this.rebuild(next.removed,next.mfnOver,next.customList);
+    this.persist(next.removed,next.mfnOver,next.customList);
+    let focus=this.state.focus, selected=this.state.selected, calcOrigin=this.state.calc.origin;
+    const isActive=(code)=> this.byCode[code] && !(next.removed&&next.removed[code]);
+    if(!isActive(focus)) focus=this.C[0]?this.C[0].code:focus;
+    if(!isActive(selected)||selected===focus){ const p=this.C.find(c=>c.code!==focus); selected=p?p.code:selected; }
+    if(!isActive(calcOrigin)||calcOrigin===focus){ const p=this.C.find(c=>c.code!==focus); calcOrigin=p?p.code:calcOrigin; }
+    this.setState(s=>Object.assign({},patch,{focus,selected,calc:Object.assign({},s.calc,{origin:calcOrigin})}));
+  }
+
+  /* ---- rate model ---- */
+  scrubMs(){ return Date.parse(this.allDates[Math.min(this.state.scrubIdx,this.allDates.length-1)]||this.allDates[this.allDates.length-1]); }
+  applied(imp,exp,ms){
+    const o=this.OVR[imp+'>'+exp];
+    if(o){ let h=null,e=null; for(const ev of o.events){ if(Date.parse(ev.d)<=ms){h=ev.h;e=ev.e;} } if(h!=null) return {h,e,hasO:true}; }
+    const c=this.byCode[imp]; const m=(c?c.mfn:0)/100; return {h:m,e:m,hasO:false};
+  }
+  getOut(code,ms){
+    if(this.state.panel==='scenario' && this.state.scenario[code]!=null){ const v=this.state.scenario[code]; return {h:v,e:v,hasO:true,scen:true}; }
+    return this.applied(this.state.focus,code,ms);
+  }
+  getIn(code,ms){ return this.applied(code,this.state.focus,ms); }
+  disp(r){ return r.e; }
+  pct(x){ return x==null?'—':Math.round(x*100)+'%'; }
+  money(b){ if(b==null)return '—'; if(b>=1)return '$'+(b>=100?Math.round(b):b.toFixed(1))+'B'; return '$'+Math.round(b*1000)+'M'; }
+  hasOverride(a,b){ return !!(this.OVR[a+'>'+b]||this.OVR[b+'>'+a]); }
+  pairHasTime(a,b){ return !!(this.OVR[a+'>'+b]||this.OVR[b+'>'+a]); }
+  fmtCur(v,cur){ const s=this.SYM[cur]||''; const n=Math.round(v); return s+n.toLocaleString('en-US'); }
+
+  colorFor(r){
+    if(r==null) return 'rgb(140,150,160)';
+    const stops=[[0,[106,163,214]],[0.12,[84,176,162]],[0.3,[201,162,39]],[0.55,[224,118,46]],[0.9,[207,58,44]],[1.3,[160,27,46]]];
+    r=Math.max(0,Math.min(1.3,r));
+    let a=stops[0],b=stops[stops.length-1];
+    for(let i=0;i<stops.length-1;i++){ if(r>=stops[i][0]&&r<=stops[i+1][0]){a=stops[i];b=stops[i+1];break;} }
+    const t=(r-a[0])/((b[0]-a[0])||1);
+    const c=a[1].map((v,i)=>Math.round(v+(b[1][i]-v)*t));
+    return 'rgb('+c[0]+','+c[1]+','+c[2]+')';
+  }
+
+  theme(){
+    const t=this.state.mapThemeSel||(this.props&&this.props.mapTheme)||'Light';
+    const T={
+      Light:{ocean:'#eef3f7',sg:['#e9f1f6','#cfdfe9'],flat:'#dde9f1',land:'#e7e0d1',focus:'#f0d3bc',ovr:'#f4e6d6',border:'rgba(64,84,99,.6)',grat:'rgba(110,140,165,.14)',stroke:'#8ba0ad',halo:'rgba(255,255,255,.92)',dark:'#1a160f',mute:'#566472'},
+      Slate:{ocean:'#d7e0e8',sg:['#cdd9e3','#a6b6c4'],flat:'#c2cfd9',land:'#93a4b3',focus:'#e07a3a',ovr:'#aabaca',border:'rgba(40,55,70,.7)',grat:'rgba(50,70,92,.2)',stroke:'#6c7f8e',halo:'rgba(255,255,255,.85)',dark:'#11202c',mute:'#2c3d4b'},
+      Midnight:{ocean:'#0b1622',sg:['#15293c','#0a1420'],flat:'#0e1f30',land:'#22384f',focus:'#e0762e',ovr:'#2c4a63',border:'rgba(120,160,200,.22)',grat:'rgba(120,160,200,.08)',stroke:'#33536e',halo:'rgba(8,16,26,.85)',dark:'#eaf1f8',mute:'#9fb6cc'},
+      Mono:{ocean:'#f1f1ef',sg:['#ececea','#d8d8d4'],flat:'#e6e6e3',land:'#cfcfca',focus:'#1a160f',ovr:'#dadad6',border:'rgba(60,60,55,.5)',grat:'rgba(80,80,75,.12)',stroke:'#b0b0aa',halo:'rgba(255,255,255,.9)',dark:'#1a160f',mute:'#6b6b64'}
+    };
+    return T[t]||T.Light;
+  }
+  arcStyle(){ return this.state.arcStyleSel||(this.props&&this.props.arcStyle)||'Solid'; }
+  flowSpeed(){ const v=this.state.flowSel!=null?this.state.flowSel:(this.props&&this.props.flowSpeed); return v==null?1:v; }
+
+  /* ---- map boot ---- */
+  bootMap(){
+    const tick=()=>{ if(!this.mounted)return;
+      if(window.d3&&window.topojson){
+        if(!this.world){ fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json()).then(t=>{ this.world=window.topojson.feature(t,t.objects.countries); this.tryInitMap(); }).catch(e=>console.error(e)); }
+        else this.tryInitMap();
+        return;
+      } setTimeout(tick,120);
+    }; tick();
+  }
+  tryInitMap(){
+    if(this.inited||!this.canvas||!this.world||!window.d3) return;
+    this.inited=true; this.resize();
+    this.canvas.addEventListener('pointerdown',(e)=>this.onDown(e));
+    window.addEventListener('pointermove',(e)=>this.onMoveWin(e));
+    window.addEventListener('pointerup',(e)=>this.onUp(e));
+    this.canvas.addEventListener('pointermove',(e)=>this.onHover(e));
+    this.canvas.addEventListener('pointerleave',()=>{ this.hoverCode=null; if(this.tip)this.tip.style.opacity=0; });
+    this.canvas.addEventListener('wheel',(e)=>this.onWheel(e),{passive:false});
+    try{ this.ro=new ResizeObserver(()=>this.resize()); this.ro.observe(this.stage); }catch(e){}
+    this.loop();
+  }
+  resize(){
+    if(!this.canvas||!this.stage) return;
+    const r=this.stage.getBoundingClientRect();
+    const w=r.width,h=r.height,dpr=Math.min(2,window.devicePixelRatio||1);
+    this.canvas.width=w*dpr; this.canvas.height=h*dpr; this.dims={w,h,dpr};
+    this.ctx=this.canvas.getContext('2d');
+    if(this.state.viewMode==='flat') this.flat={k:1,tx:0,ty:0};
+  }
+  aimAtFocus(code,instant){
+    const c=this.byCode[code]; if(!c)return;
+    const tgt=[-c.coord[0], Math.max(-55,Math.min(10,-c.coord[1]))];
+    if(instant){ this.rot=[tgt[0],tgt[1]]; this.rotTarget=null; } else this.rotTarget=tgt;
+  }
+
+  buildProj(){
+    const {w,h}=this.dims; const d3=window.d3;
+    if(this.state.viewMode==='globe'){
+      this.globeR=Math.min(w,h)*0.44*this.globeZoom;
+      this.proj=d3.geoOrthographic().translate([w/2,h*0.46]).scale(this.globeR).rotate([this.rot[0],this.rot[1],0]).clipAngle(90);
+    } else {
+      this.projBase=d3.geoNaturalEarth1().fitExtent([[16,16],[w-16,h-66]],{type:'Sphere'});
+      this.proj=this.projBase;
+    }
+  }
+  sp(coord){
+    if(this.state.viewMode==='globe'){
+      const center=[-this.rot[0],-this.rot[1]];
+      if(window.d3.geoDistance(coord,center)>Math.PI/2) return null;
+      return this.proj(coord);
+    }
+    const p=this.projBase(coord); if(!p) return null;
+    return [p[0]*this.flat.k+this.flat.tx, p[1]*this.flat.k+this.flat.ty];
+  }
+  // like sp() but never returns null on the globe: a hidden point is clamped to the
+  // rim along the great circle toward it, so arcs stay visible as countries rotate off-edge
+  spLoose(coord){
+    if(this.state.viewMode!=='globe') return this.sp(coord);
+    const center=[-this.rot[0],-this.rot[1]];
+    const dist=window.d3.geoDistance(coord,center); const lim=Math.PI/2*0.999;
+    if(dist<=lim) return this.proj(coord);
+    const f=lim/dist; const edge=window.d3.geoInterpolate(center,coord)(f);
+    return this.proj(edge);
+  }
+
+  loop(){ this.raf=requestAnimationFrame(()=>this.loop()); this.t+=0.016;
+    if(this.rotTarget){ this.rot[0]+=(this.rotTarget[0]-this.rot[0])*0.12; this.rot[1]+=(this.rotTarget[1]-this.rot[1])*0.12; if(Math.abs(this.rotTarget[0]-this.rot[0])<0.3&&Math.abs(this.rotTarget[1]-this.rot[1])<0.3) this.rotTarget=null; }
+    this.draw();
+  }
+  draw(){
+    // self-heal: if the canvas backing store is 0×0 or out of sync with the stage, re-measure
+    if(this.stage){ const r=this.stage.getBoundingClientRect(); if(r.width&&r.height&&(!this.dims||this.canvas.width===0||this.canvas.height===0||Math.abs(this.dims.w-r.width)>1||Math.abs(this.dims.h-r.height)>1)) this.resize(); }
+    const ctx=this.ctx; if(!ctx||!this.dims||!this.world) return;
+    const TH=this.theme();
+    const {w,h,dpr}=this.dims; const mode=this.state.viewMode;
+    this.buildProj();
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    ctx.fillStyle=TH.ocean; ctx.fillRect(0,0,w,h);
+    ctx.save();
+    if(mode==='flat'){ ctx.translate(this.flat.tx,this.flat.ty); ctx.scale(this.flat.k,this.flat.k); }
+    const path=window.d3.geoPath(this.proj,ctx); const lw=mode==='flat'?1/this.flat.k:1;
+    ctx.beginPath(); path({type:'Sphere'});
+    if(mode==='globe'){ const gp=ctx.createRadialGradient(w/2-this.globeR*0.3,h*0.46-this.globeR*0.3,this.globeR*0.2,w/2,h*0.46,this.globeR); gp.addColorStop(0,TH.sg[0]); gp.addColorStop(1,TH.sg[1]); ctx.fillStyle=gp; } else ctx.fillStyle=TH.flat;
+    ctx.fill(); ctx.strokeStyle=TH.stroke; ctx.lineWidth=lw; ctx.stroke();
+    ctx.beginPath(); path(window.d3.geoGraticule10()); ctx.strokeStyle=TH.grat; ctx.lineWidth=0.5*lw; ctx.stroke();
+    const ms=this.scrubMs(); const focus=this.state.noFocus?null:this.state.focus;
+    for(const f of this.world.features){
+      ctx.beginPath(); path(f);
+      const code=this.nameToCode[f.properties.name];
+      const cc=code&&this.cColor&&this.cColor[code];
+      if(cc){ ctx.fillStyle=cc; ctx.globalAlpha=code===focus?0.92:0.6; ctx.fill(); ctx.globalAlpha=1; }
+      else { ctx.fillStyle=TH.land; ctx.fill(); }
+      ctx.strokeStyle=TH.border; ctx.lineWidth=0.7*lw; ctx.stroke();
+    }
+    ctx.restore();
+    if(this.state.netMode || this.state.noFocus){ this.drawNetwork(ms,TH); return; }
+    const fpt=this.sp(this.byCode[focus].coord);
+    const fptL=this.spLoose(this.byCode[focus].coord);
+    this.hits=[]; this.pinHits=[]; this.arcHits=[];
+    for(const c of this.C){ if(c.code===focus) continue;
+      const pt=this.sp(c.coord); const ptL=this.spLoose(c.coord); if(!ptL||!fptL) continue;
+      const out=this.disp(this.getOut(c.code,ms)); const inb=this.disp(this.getIn(c.code,ms));
+      const hot=c.code===this.state.selected;
+      this.arc(fptL,ptL,out,1,hot,TH,{from:focus,to:c.code,rate:out});
+      if(this.OVR[c.code+'>'+focus]) this.arc(fptL,ptL,inb,-1,hot,TH,{from:c.code,to:focus,rate:inb});
+      if(pt) this.hits.push({code:c.code,name:c.name,flag:c.flag,x:pt[0],y:pt[1],out,inb});
+    }
+    this.EV.forEach((ev,i)=>{ if(ev.code!==this.state.selected) return; const c=this.byCode[ev.code]; if(!c)return; const pt=this.sp(c.coord); if(!pt)return;
+      this.pin(pt[0],pt[1]-32,i===this.state.activeEvent); this.pinHits.push({i,x:pt[0],y:pt[1]-32}); });
+    for(const ht of this.hits){
+      const sel=ht.code===this.state.selected, hov=ht.code===this.hoverCode;
+      this.marker(ht.x,ht.y,this.colorFor(ht.out),4+(ht.out||0)*4+(sel||hov?2:0),TH);
+      ctx.textAlign='center';
+      ctx.font="600 14.5px 'DM Mono'"; this.pctBadge(this.pct(ht.out),ht.x,ht.y-13,this.colorFor(ht.out));
+      ctx.font=(sel?"600":"500")+" 9.5px Archivo"; this.label(sel||hov?ht.name:ht.code,ht.x,ht.y+16,sel?TH.dark:TH.mute,TH);
+    }
+    if(fpt){ this.marker(fpt[0],fpt[1],'#c2410c',6,TH); ctx.textAlign='center'; ctx.font="700 11px Archivo"; this.label(this.byCode[focus].name,fpt[0],fpt[1]+17,TH.dark,TH); }
+  }
+  /* network arc endpoints also use spLoose */
+  drawNetwork(ms,TH){ const ctx=this.ctx; this.hits=[]; this.arcHits=[]; this.pinHits=[];
+    let pairs=[];
+    if(this.state.netPairs && this.state.netPairs.length){ pairs=this.state.netPairs.filter(p=>this.byCode[p[0]]&&this.byCode[p[1]]); }
+    else { let codes=(this.state.netSet&&this.state.netSet.length)?this.state.netSet:this.C.map(c=>c.code); codes=[...new Set(codes)].filter(c=>this.byCode[c]); for(let i=0;i<codes.length;i++) for(let j=i+1;j<codes.length;j++) pairs.push([codes[i],codes[j]]); }
+    const involved=new Set();
+    pairs.forEach(([A,B])=>{ const pa=this.spLoose(this.byCode[A].coord), pb=this.spLoose(this.byCode[B].coord); if(!pa||!pb)return;
+      const rAB=this.disp(this.applied(A,B,ms)), rBA=this.disp(this.applied(B,A,ms)); const hi=Math.max(rAB,rBA);
+      this.arc(pa,pb,hi,1,false,TH,{a:A,b:B,rAB,rBA},this.colorFor(hi)); involved.add(A); involved.add(B); });
+    involved.forEach(code=>{ const p=this.sp(this.byCode[code].coord); if(!p)return; const cc=this.cColor[code]||'#c2410c'; this.marker(p[0],p[1],cc,5,TH); ctx.textAlign='center'; ctx.font="600 10px Archivo"; this.label(this.byCode[code].name,p[0],p[1]+15,TH.dark,TH);
+      this.hits.push({code,name:this.byCode[code].name,flag:this.byCode[code].flag,x:p[0],y:p[1],out:this.disp(this.applied(this.state.focus,code,ms)),inb:this.disp(this.applied(code,this.state.focus,ms))}); });
+  }
+  arc(a,b,rate,dir,hot,TH,meta,forceCol){
+    const ctx=this.ctx; const style=this.arcStyle();
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    const dx=b[0]-a[0],dy=b[1]-a[1],dist=Math.hypot(dx,dy)||1;
+    const lift=Math.min(dist*0.32,140)*(dir>0?1:0.6);
+    const nx=-dy/dist,ny=dx/dist; const cx=mx+nx*lift,cy=my+ny*lift-lift*0.2;
+    const trace=()=>{ ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.quadraticCurveTo(cx,cy,b[0],b[1]); };
+    const col=forceCol||(dir>0?this.colorFor(rate):'rgba(59,110,165,0.85)');
+    const base=dir>0?1.3+(rate||0)*2.2:1.2;
+    ctx.setLineDash([]); ctx.lineCap='round';
+    // halo
+    trace(); ctx.strokeStyle=TH.halo; ctx.lineWidth=base+2.5; ctx.stroke();
+    if(style==='Glow'){ ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=hot?14:7; trace(); ctx.strokeStyle=col; ctx.globalAlpha=hot?1:(dir>0?0.7:0.5); ctx.lineWidth=base; ctx.stroke(); ctx.restore(); ctx.globalAlpha=1; }
+    else if(style==='Dashed'){ trace(); ctx.strokeStyle=col; ctx.globalAlpha=hot?1:(dir>0?0.62:0.42); ctx.lineWidth=base; ctx.setLineDash([5,8]); ctx.lineDashOffset=(dir>0?-this.t*32:this.t*24)*this.flowSpeed(); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1; }
+    else { trace(); ctx.strokeStyle=col; ctx.globalAlpha=hot?1:(dir>0?0.62:0.42); ctx.lineWidth=base; ctx.stroke(); ctx.globalAlpha=1; }
+    // static direction arrowhead at ~62% along the curve (so every line shows which way it points)
+    { const tt=0.62, u=1-tt; const px=u*u*a[0]+2*u*tt*cx+tt*tt*b[0], py=u*u*a[1]+2*u*tt*cy+tt*tt*b[1];
+      let ax=2*(u*(cx-a[0])+tt*(b[0]-cx)), ay=2*(u*(cy-a[1])+tt*(b[1]-cy)); const al=Math.hypot(ax,ay)||1;
+      const dxn=(dir<0?-1:1)*ax/al, dyn=(dir<0?-1:1)*ay/al, px2=-dyn, py2=dxn, s=5;
+      ctx.globalAlpha=hot?1:0.8; ctx.fillStyle=col; ctx.beginPath();
+      ctx.moveTo(px+dxn*s, py+dyn*s); ctx.lineTo(px-dxn*s*0.5+px2*s*0.62, py-dyn*s*0.5+py2*s*0.62); ctx.lineTo(px-dxn*s*0.5-px2*s*0.62, py-dyn*s*0.5-py2*s*0.62); ctx.closePath(); ctx.fill(); ctx.globalAlpha=1; }
+    if(hot && this.flowSpeed()>0){ let tt=(this.t*0.2*this.flowSpeed())%1; if(dir<0) tt=1-tt; const u=1-tt; const px=u*u*a[0]+2*u*tt*cx+tt*tt*b[0], py=u*u*a[1]+2*u*tt*cy+tt*tt*b[1];
+      ctx.beginPath(); ctx.arc(px,py,4.2,0,7); ctx.fillStyle=TH.halo; ctx.fill();
+      ctx.beginPath(); ctx.arc(px,py,2.7,0,7); ctx.fillStyle=col; ctx.fill();
+      // little arrowhead pointing the way the tariff flows
+      const ax=b[0]-cx, ay=b[1]-cy, al=Math.hypot(ax,ay)||1; const dirx=(dir<0?-1:1)*ax/al, diry=(dir<0?-1:1)*ay/al;
+      ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(px+dirx*5,py+diry*5); ctx.lineTo(px-diry*3-dirx*1,py+dirx*3-diry*1); ctx.lineTo(px+diry*3-dirx*1,py-dirx*3-diry*1); ctx.closePath(); ctx.fill(); }
+    if(meta){ const pts=[]; for(let s=0;s<=12;s++){ const tt=s/12,u=1-tt; pts.push([u*u*a[0]+2*u*tt*cx+tt*tt*b[0], u*u*a[1]+2*u*tt*cy+tt*tt*b[1]]); } this.arcHits.push({meta,pts}); }
+  }
+  marker(x,y,col,r,TH){ const ctx=this.ctx; ctx.beginPath(); ctx.arc(x,y,r+4,0,7); ctx.fillStyle=TH.halo; ctx.fill();
+    ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fillStyle=col; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle=TH.ocean; ctx.stroke(); }
+  label(txt,x,y,col,TH){ const ctx=this.ctx; ctx.lineWidth=3; ctx.strokeStyle=TH.halo; ctx.lineJoin='round'; ctx.strokeText(txt,x,y); ctx.fillStyle=col; ctx.fillText(txt,x,y); }
+  roundRect(x,y,w,h,r){ const ctx=this.ctx; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  pctBadge(txt,x,y,col){ const ctx=this.ctx; ctx.font="600 14.5px 'DM Mono'"; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const w=ctx.measureText(txt).width, padX=5, h=15, rw=w+padX*2;
+    this.roundRect(x-rw/2, y-h/2, rw, h, 4); ctx.fillStyle='rgba(255,255,255,.94)'; ctx.fill(); ctx.lineWidth=1.2; ctx.strokeStyle=col; ctx.stroke();
+    ctx.fillStyle=col; ctx.fillText(txt,x,y); ctx.textBaseline='alphabetic'; }
+  pin(x,y,active){ const ctx=this.ctx; const s=active?7:5.5;
+    ctx.beginPath(); ctx.moveTo(x,y+s+5); ctx.lineTo(x-s,y); ctx.lineTo(x,y-s); ctx.lineTo(x+s,y); ctx.closePath();
+    ctx.fillStyle=active?'#9a1c1c':'#b4541f'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#fff'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,y,1.6,0,7); ctx.fillStyle='#fff'; ctx.fill(); }
+
+  /* ---- interaction ---- */
+  rel(e){ const r=this.canvas.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; }
+  onDown(e){ this.down=true; this.moved=false; const [x,y]=this.rel(e); this.start=[x,y]; this.rotStart=[...this.rot]; this.flatStart={...this.flat}; this.canvas.style.cursor='grabbing'; }
+  onMoveWin(e){ if(!this.down)return; const [x,y]=this.rel(e); const dx=x-this.start[0],dy=y-this.start[1];
+    if(Math.abs(dx)+Math.abs(dy)>4) this.moved=true;
+    if(this.state.viewMode==='globe'){ this.rot=[this.rotStart[0]+dx*0.28, Math.max(-89,Math.min(89,this.rotStart[1]-dy*0.28))]; this.rotTarget=null; }
+    else { this.flat={k:this.flatStart.k,tx:this.flatStart.tx+dx,ty:this.flatStart.ty+dy}; }
+  }
+  onUp(e){ if(!this.down)return; this.down=false; this.canvas.style.cursor='grab';
+    if(this.moved) return; const [x,y]=this.rel(e);
+    for(const p of (this.pinHits||[])){ if(Math.hypot(p.x-x,p.y-y)<14){ this.evtPos=[p.x,p.y]; this.setState({activeEvent:p.i}); return; } }
+    let best=null,bd=22; for(const ht of (this.hits||[])){ const d=Math.hypot(ht.x-x,ht.y-y); if(d<bd){bd=d;best=ht;} }
+    if(best) this.setState({selected:best.code,panel:(this.state.panel==='detail'||this.state.panel==='compare'||this.state.panel==='scenario')?this.state.panel:'detail',activeEvent:null}); else this.setState({activeEvent:null});
+  }
+  onHover(e){ if(this.down)return; const r=this.canvas.getBoundingClientRect(); const x=e.clientX-r.left, y=e.clientY-r.top;
+    let best=null,bd=22; for(const ht of (this.hits||[])){ const d=Math.hypot(ht.x-x,ht.y-y); if(d<bd){bd=d;best=ht;} }
+    this.hoverCode=best?best.code:null;
+    if(best&&this.tip){ this.canvas.style.cursor='pointer';
+      this.tip.style.opacity=1; this.tip.style.left=Math.min(best.x+14,r.width-168)+'px'; this.tip.style.top=Math.max(best.y-8,8)+'px';
+      this.tip.innerHTML="<div style=\"font:600 14.5px 'Spectral',serif;color:#1a160f;margin-bottom:5px\">"+best.flag+" "+best.name+"</div>"+
+        "<div style=\"display:flex;justify-content:space-between;gap:16px;font:500 14.5px 'DM Mono';color:#b4541f\"><span>"+this.byCode[this.state.focus].code+" imposes</span><span>"+this.pct(best.out)+"</span></div>"+
+        "<div style=\"display:flex;justify-content:space-between;gap:16px;font:500 14.5px 'DM Mono';color:#3b6ea5;margin-top:3px\"><span>on "+this.byCode[this.state.focus].code+"</span><span>"+this.pct(best.inb)+"</span></div>";
+      return; }
+    // hovering an arc line → show that flow's detail
+    let bestArc=null, ad=9; for(const arc of (this.arcHits||[])){ for(const p of arc.pts){ const d=Math.hypot(p[0]-x,p[1]-y); if(d<ad){ ad=d; bestArc=arc; } } }
+    if(bestArc&&this.tip){ const m=bestArc.meta;
+      this.canvas.style.cursor='pointer'; this.tip.style.opacity=1; this.tip.style.left=Math.min(x+14,r.width-190)+'px'; this.tip.style.top=Math.max(y-10,8)+'px';
+      if(m.a){ const A=this.byCode[m.a],B=this.byCode[m.b];
+        this.tip.innerHTML="<div style=\"font:600 15.5px 'Spectral',serif;color:#1a160f;margin-bottom:5px\">"+A.flag+" "+A.name+" &harr; "+B.flag+" "+B.name+"</div>"+
+          "<div style=\"display:flex;justify-content:space-between;gap:16px;font:500 14.5px 'DM Mono';color:"+this.colorFor(m.rAB)+"\"><span>"+m.a+" &rarr; "+m.b+"</span><span>"+this.pct(m.rAB)+"</span></div>"+
+          "<div style=\"display:flex;justify-content:space-between;gap:16px;font:500 14.5px 'DM Mono';color:"+this.colorFor(m.rBA)+";margin-top:3px\"><span>"+m.b+" &rarr; "+m.a+"</span><span>"+this.pct(m.rBA)+"</span></div>"; }
+      else { const fn=this.byCode[m.from], tn=this.byCode[m.to];
+        this.tip.innerHTML="<div style=\"font:600 16px 'Spectral',serif;color:#1a160f;margin-bottom:5px\">"+(fn?fn.flag+' '+fn.name:m.from)+" &rarr; "+(tn?tn.flag+' '+tn.name:m.to)+"</div>"+
+          "<div style=\"display:flex;justify-content:space-between;gap:18px;font:500 14.5px 'DM Mono';color:"+this.colorFor(m.rate)+"\"><span>tariff imposed</span><span>"+this.pct(m.rate)+"</span></div>"; }
+      return; }
+    this.canvas.style.cursor='grab'; if(this.tip) this.tip.style.opacity=0;
+  }
+  onWheel(e){ e.preventDefault(); const f=e.deltaY<0?1.055:0.948;
+    if(this.state.viewMode==='globe'){ this.globeZoom=Math.max(0.6,Math.min(3.2,this.globeZoom*f)); }
+    else { const [mx,my]=this.rel(e); const k0=this.flat.k; const k=Math.max(1,Math.min(7,k0*f));
+      this.flat={ k, tx:mx-(mx-this.flat.tx)*(k/k0), ty:my-(my-this.flat.ty)*(k/k0) }; }
+  }
+
+  togglePlay(){ if(!this.pairHasTime(this.state.focus,this.state.selected)) return;
+    if(this.state.playing){ clearInterval(this.playTimer); this.setState({playing:false}); return; }
+    let i=this.state.scrubIdx>=this.allDates.length-1?0:this.state.scrubIdx; this.setState({playing:true,scrubIdx:i});
+    this.playTimer=setInterval(()=>{ this.setState(s=>{ if(s.scrubIdx>=this.allDates.length-1){ clearInterval(this.playTimer); return {playing:false}; } return {scrubIdx:s.scrubIdx+1}; }); },650);
+  }
+  setFocus(code){ let sel=this.state.selected; if(sel===code) sel=this.C.find(c=>c.code!==code).code; this.setState({focus:code,selected:sel,scenario:{},chartExtra:[]}); this.aimAtFocus(code,false); }
+  toggleChart(code){ this.setState(s=>{ const has=s.chartExtra.includes(code); return {chartExtra: has? s.chartExtra.filter(c=>c!==code): [...s.chartExtra, code]}; }); }
+  refreshData(){
+    if(this.state.refreshing) return; this.setState({refreshing:true});
+    import('./tariff-data.js').then(async (m)=>{
+      let data=m;
+      try{ const live=await import('./wto-loader.js'); const sheet=await live.loadSheet(m); data=sheet?Object.assign({},m,sheet):await live.loadLive(m); }catch(e){ console.warn('refresh failed',e); }
+      this.META=data.META||this.META; this.baseC=data.COUNTRIES||this.baseC; this.OVR=data.OVERRIDES||this.OVR; this.EV=data.EVENTS||this.EV;
+      this.sheetBacked = data!==m && !!(data.COUNTRIES);
+      this.prep(this.state.removed,this.state.mfnOver,this.state.customList);
+      this.setState({refreshing:false});
+    }).catch(()=>this.setState({refreshing:false}));
+  }
+  maybeLoadHs(hsCode, imp){
+    const raw=(hsCode||'').replace(/[^0-9]/g,''); if(raw.length<2) return;
+    const origins=[this.state.calc.origin,this.state.calc.origin2,this.state.calc.origin3].filter(c=>this.byCode[c]);
+    import('./wto-loader.js').then(live=>{
+      if(!live.proxyReady || !live.proxyReady()) return;        // proxy not connected → keep estimates
+      live.loadHsDuties(raw, imp, origins).then(map=>{ if(map){ this.liveHs=Object.assign({},this.liveHs,map); this.forceUpdate(); } });
+    }).catch(()=>{});
+  }
+  buildTabs(){ const I='#8a8b90'; const nm=this.state.netMode, p=this.state.panel;
+    const mk=(label,active,onClick)=>({label,onClick,color:active?'#1a1a1a':I,line:active?'#c2410c':'transparent'});
+    return [ mk('Overview',!nm&&p==='detail',()=>this.setState({netMode:false,panel:'detail'})),
+      mk('Network',nm,()=>this.setState({netMode:true})),
+      mk('Compare',!nm&&p==='compare',()=>this.setState({netMode:false,panel:'compare'})),
+      mk('Scenario',!nm&&p==='scenario',()=>this.setState({netMode:false,panel:'scenario'})),
+      mk('Manage',!nm&&p==='admin',()=>this.setState({netMode:false,panel:'admin'})),
+      mk('Guide',!nm&&p==='guide',()=>this.setState({netMode:false,panel:'guide'})) ]; }
+
+  /* ---- chart geometry ---- */
+  buildChart(imp, exp, box, extraCodes){
+    const ovrOut=this.OVR[imp+'>'+exp], ovrIn=this.OVR[exp+'>'+imp];
+    const fmfn=this.byCode[imp].mfn/100, pmfn=this.byCode[exp].mfn/100;
+    const hl = ovrOut? ovrOut.events.map(e=>({ms:Date.parse(e.d),v:e.h})) : [{ms:this.tMin,v:fmfn},{ms:this.tMax,v:fmfn}];
+    const ef = ovrOut? ovrOut.events.map(e=>({ms:Date.parse(e.d),v:e.e})) : [{ms:this.tMin,v:fmfn},{ms:this.tMax,v:fmfn}];
+    const inb= ovrIn? ovrIn.events.map(e=>({ms:Date.parse(e.d),v:e.e})) : [{ms:this.tMin,v:pmfn},{ms:this.tMax,v:pmfn}];
+    const extra=(extraCodes||[]).filter(c=>this.byCode[c]).map(code=>{ const o=this.OVR[imp+'>'+code]; const arr=o?o.events.map(e=>({ms:Date.parse(e.d),v:e.e})):[{ms:this.tMin,v:this.byCode[code].mfn/100},{ms:this.tMax,v:this.byCode[code].mfn/100}]; return {code,arr}; });
+    let maxR=0.25; [hl,ef,inb].forEach(a=>a.forEach(p=>maxR=Math.max(maxR,p.v))); extra.forEach(x=>x.arr.forEach(p=>maxR=Math.max(maxR,p.v)));
+    const yMax=Math.ceil(maxR/0.25)*0.25;
+    const sx=ms=> box.x0+(this.tMax===this.tMin?0.5:(ms-this.tMin)/(this.tMax-this.tMin))*(box.x1-box.x0);
+    const sy=v=> box.y0-(v/yMax)*(box.y0-box.y1);
+    const step=(arr)=>{ if(!arr.length)return ''; let d='M '+box.x0.toFixed(1)+' '+sy(arr[0].v).toFixed(1),prev=arr[0].v;
+      for(const p of arr){ const x=sx(p.ms); d+=' L '+x.toFixed(1)+' '+sy(prev).toFixed(1)+' L '+x.toFixed(1)+' '+sy(p.v).toFixed(1); prev=p.v; }
+      return d+' L '+box.x1.toFixed(1)+' '+sy(prev).toFixed(1); };
+    const headlinePath=step(hl), effectivePath=step(ef), inboundPath=step(inb);
+    const areaPath=headlinePath?headlinePath+' L '+box.x1.toFixed(1)+' '+box.y0.toFixed(1)+' L '+box.x0.toFixed(1)+' '+box.y0.toFixed(1)+' Z':'';
+    const extraSeries=extra.map((x,i)=>({code:x.code, path:step(x.arr), color:this.PAL[i%this.PAL.length]}));
+    return {headlinePath,effectivePath,inboundPath,areaPath,sx,sy,yMax,hlE:hl,efE:ef,inE:inb,ovrOut,ovrIn,extraSeries,box};
+  }
+  detailFor(code){
+    const focus=this.state.focus, ms=this.scrubMs();
+    const imp=this.state.swap?code:focus, exp=this.state.swap?focus:code;
+    const out=this.applied(imp,exp,ms), inb=this.applied(exp,imp,ms);
+    const ovr=this.OVR[imp+'>'+exp];
+    let peak=0; if(ovr) ovr.events.forEach(e=>peak=Math.max(peak,e.h)); else peak=this.byCode[imp].mfn/100;
+    const extraCodes=this.state.chartExtra.filter(c=>c!==exp);
+    const ch=this.buildChart(imp,exp,{x0:58,x1:640,y0:208,y1:22}, extraCodes);
+    const yTicks=[]; for(let v=0;v<=ch.yMax+1e-9;v+=ch.yMax>1?0.5:0.25){ const y=ch.sy(v); yTicks.push({y:y.toFixed(1),ty:(y+3.5).toFixed(1),topPct:(y/300*100).toFixed(2),label:Math.round(v*100)+'%'}); }
+    const xTicks=[]; let cur0=new Date(this.tMin);
+    // start at the quarter boundary at/just before tMin
+    cur0=new Date(Date.UTC(cur0.getUTCFullYear(), Math.floor(cur0.getUTCMonth()/3)*3, 1));
+    const spanM=(new Date(this.tMax).getUTCFullYear()-cur0.getUTCFullYear())*12+(new Date(this.tMax).getUTCMonth()-cur0.getUTCMonth());
+    const stepM=spanM>30?12:3;   // long range → yearly, otherwise quarterly
+    for(let dd=new Date(cur0); dd.getTime()<=this.tMax+1; dd.setUTCMonth(dd.getUTCMonth()+stepM)){
+      const m2=Math.min(Math.max(dd.getTime(),this.tMin),this.tMax); const x=ch.sx(m2);
+      const lbl=stepM===12?String(dd.getUTCFullYear()):('Q'+(Math.floor(dd.getUTCMonth()/3)+1)+" '"+String(dd.getUTCFullYear()).slice(2));
+      xTicks.push({x:x.toFixed(1),leftPct:(x/660*100).toFixed(2),label:lbl});
+    }
+    const markerLines=this.EV.map(e=>Date.parse(e.date)).filter(t=>t>=this.tMin&&t<=this.tMax).map(t=>({x:ch.sx(t).toFixed(1)}));
+    const dots=[...ch.efE.map(p=>({x:ch.sx(p.ms).toFixed(1),y:ch.sy(p.v).toFixed(1),color:'#c2410c'})), ...(ch.ovrIn?ch.inE.map(p=>({x:ch.sx(p.ms).toFixed(1),y:ch.sy(p.v).toFixed(1),color:'#3b6ea5'})):[])];
+    const sectors=ovr&&ovr.sectors?ovr.sectors.map(s=>({name:s.name,share:s.share,width:Math.round(s.share/45*100),color:s.name==='Other'?'#c4c8cf':'#c2410c'})):[];
+    const extraLines=ch.extraSeries.map(x=>({path:x.path,color:x.color}));
+    const chartChips=this.C.filter(c=>c.code!==focus&&c.code!==exp).map(c=>{ const on=this.state.chartExtra.includes(c.code); const i=this.state.chartExtra.indexOf(c.code); const col=on?this.PAL[i%this.PAL.length]:null;
+      return {flag:c.flag,name:c.code,onToggle:()=>this.toggleChart(c.code), border:on?col:'#e0d8c7', bg:on?col:'#fff', fg:on?'#fff':'#6b6357'}; });
+    let hoverOn=false,hoverX='0',hoverHy='0',hoverLabel='',hoverHead='',hoverEff='',hoverIn='',hoverBoxX='58',hoverTextX='68',hoverLeftPct='0',hoverShift='translateX(14px)';
+    if(this.state.chartHoverX!=null && this.state.chartHoverX>=58 && this.state.chartHoverX<=640){
+      const frac=(this.state.chartHoverX-58)/(640-58); const hms=this.tMin+frac*(this.tMax-this.tMin);
+      const oa=this.applied(imp,exp,hms), ib=this.applied(exp,imp,hms);
+      hoverOn=true; hoverX=this.state.chartHoverX.toFixed(1); hoverHy=ch.sy(oa.h).toFixed(1);
+      hoverLabel=new Date(hms).toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'});
+      hoverHead=this.pct(oa.h); hoverEff=this.pct(oa.e); hoverIn=this.pct(this.disp(ib));
+      const bx=Math.min(Math.max(this.state.chartHoverX+10,58),486); hoverBoxX=bx.toFixed(1); hoverTextX=(bx+10).toFixed(1);
+      hoverLeftPct=(this.state.chartHoverX/660*100).toFixed(2); hoverShift=this.state.chartHoverX>430?'translateX(calc(-100% - 14px))':'translateX(14px)';
+    }
+    return {
+      flag:this.byCode[exp].flag, name:this.byCode[exp].name, code:exp, focusName:this.byCode[imp].name, focusCode:imp,
+      headlineLabel:this.pct(out.h), effectiveLabel:this.pct(out.e), inLabel:this.pct(this.disp(inb)),
+      mfnNote: ovr? 'Trade-war measure in force' : 'Applied MFN baseline (no special measure)',
+      hasTrade: !!(ovr&&ovr.trade), hasSectors: sectors.length>0, hasExempt: !!(ovr&&ovr.exemptions),
+      exemptions: ovr&&ovr.exemptions?ovr.exemptions:[],
+      importsLabel: ovr&&ovr.trade?this.money(ovr.trade.imports):'—', exportsLabel: ovr&&ovr.trade?this.money(ovr.trade.exports):'—',
+      exposureOut: ovr&&ovr.trade?this.money(ovr.trade.imports*out.e):'—', exposureIn: ovr&&ovr.trade?this.money(ovr.trade.exports*this.disp(inb)):'—',
+      headlinePath:ch.headlinePath, effectivePath:ch.effectivePath, inboundPath:ch.inboundPath, areaPath:ch.areaPath,
+      yTicks,xTicks,markerLines,dots,sectors,extraLines,chartChips,
+      hoverOn,hoverX,hoverHy,hoverLabel,hoverHead,hoverEff,hoverIn,hoverBoxX,hoverTextX,hoverLeftPct,hoverShift,
+      onChartMove:(e)=>{ const r=e.currentTarget.getBoundingClientRect(); const vx=(e.clientX-r.left)/r.width*660; this.setState({chartHoverX:vx}); },
+      onChartLeave:()=>this.setState({chartHoverX:null})
+    };
+  }
+  miniFor(imp, code){
+    const ms=this.scrubMs();
+    const out=this.applied(imp,code,ms), inb=this.applied(code,imp,ms); const ovr=this.OVR[imp+'>'+code];
+    let peak=0; if(ovr) ovr.events.forEach(e=>peak=Math.max(peak,e.h)); else peak=this.byCode[imp].mfn/100;
+    const ch=this.buildChart(imp,code,{x0:6,x1:354,y0:82,y1:12},[]);
+    return { flag:this.byCode[code].flag, name:this.byCode[code].name, code, focusName:this.byCode[imp].name, focusCode:imp,
+      headlineLabel:this.pct(out.h), effectiveLabel:this.pct(out.e), inLabel:this.pct(this.disp(inb)),
+      importsLabel: ovr&&ovr.trade?this.money(ovr.trade.imports):'—', exposureOut: ovr&&ovr.trade?this.money(ovr.trade.imports*out.e):'—', peakLabel:this.pct(peak),
+      headlinePath:ch.headlinePath, effectivePath:ch.effectivePath, inboundPath:ch.inboundPath, areaPath:ch.areaPath };
+  }
+
+  /* ---- render ---- */
+  renderVals(){
+    const seg=(on)=>on?{bg:'#1a160f',fg:'#f4f1ea'}:{bg:'transparent',fg:'#6b6357'};
+    const tb=(on)=>on?{bg:'#1a160f',fg:'#f4f1ea'}:{bg:'#ffffff',fg:'#1a160f'};
+    const vG=seg(this.state.viewMode==='globe'), vF=seg(this.state.viewMode==='flat');
+    const bE=seg(this.state.basis==='effective'), bH=seg(this.state.basis==='headline');
+    const base={
+      ready:false, meta:{title:'Global Tariff Monitor',subtitle:'',source:'',lastUpdate:''},
+      focus:this.state.noFocus?'':this.state.focus, focusName:'', focusFlag:'', focusOptions:[],
+      onFocus:(e)=>{ if(e.target.value===''){ this.setState({noFocus:true, netMode:true}); } else { this.setState({noFocus:false, netMode:false}); this.setFocus(e.target.value); } },
+      tabs:this.buildTabs(), showFocusSel:true,
+      query:this.state.query, onQuery:(e)=>this.setState({query:e.target.value}),
+      onToggleCompare:()=>this.setState(s=>({panel:s.panel==='compare'?'detail':'compare'})),
+      onToggleScenario:()=>this.setState(s=>({panel:s.panel==='scenario'?'detail':'scenario'})),
+      onToggleGuide:()=>this.setState(s=>({panel:s.panel==='guide'?'detail':'guide'})),
+      onToggleAdmin:()=>this.setState(s=>({panel:s.panel==='admin'?'detail':'admin'})),
+      onExport:()=>{ if(this.state.panel==='guide'||this.state.panel==='admin'){ this.setState({panel:'detail'},()=>setTimeout(()=>window.print(),150)); } else window.print(); },
+      refreshLabel:this.state.refreshing?'⟳ …':'⟳ Refresh', onRefresh:()=>this.refreshData(),
+      themeSel:this.state.mapThemeSel||(this.props&&this.props.mapTheme)||'Light', onTheme:(e)=>this.setState({mapThemeSel:e.target.value}),
+      arcSel:this.arcStyle(), onArc:(e)=>this.setState({arcStyleSel:e.target.value}),
+      flowSel:this.flowSpeed(), onFlow:(e)=>this.setState({flowSel:+e.target.value}),
+      netMode:this.state.netMode, onToggleNet:()=>this.setState(s=>({netMode:!s.netMode, netBuilderOpen:true})),
+      netBuilderShow:this.state.netMode && this.state.netBuilderOpen,
+      netReopenShow:this.state.netMode && !this.state.netBuilderOpen,
+      builderRef:(el)=>{ this.builderEl=el; },
+      netBg:this.state.netMode?'#13202c':'#ffffff', netFg:this.state.netMode?'#f4f1ea':'#1a160f',
+      onSelectAllLb:()=>this.applyAdmin({removed:{}}),
+      onClearAllLb:()=>{ const removed={}; (this.allList||[]).forEach(c=>{ if(c.code!==this.state.focus) removed[c.code]=1; }); this.applyAdmin({removed}); },
+      onGlobe:()=>{ this.setState({viewMode:'globe'},()=>this.aimAtFocus(this.state.focus,false)); },
+      onFlat:()=>{ this.flat={k:1,tx:0,ty:0}; this.setState({viewMode:'flat'}); },
+      onEffective:()=>this.setState({basis:'effective'}), onHeadline:()=>this.setState({basis:'headline'}),
+      viewGlobeBg:vG.bg,viewGlobeFg:vG.fg,viewFlatBg:vF.bg,viewFlatFg:vF.fg,
+      basisEffBg:bE.bg,basisEffFg:bE.fg,basisHeadBg:bH.bg,basisHeadFg:bH.fg,
+      compareBg:tb(this.state.panel==='compare').bg, compareFg:tb(this.state.panel==='compare').fg,
+      scenarioBg:tb(this.state.panel==='scenario').bg, scenarioFg:tb(this.state.panel==='scenario').fg,
+      guideBg:tb(this.state.panel==='guide').bg, guideFg:tb(this.state.panel==='guide').fg,
+      adminBg:tb(this.state.panel==='admin').bg, adminFg:tb(this.state.panel==='admin').fg,
+      playIcon:this.state.playing?'❚❚':'▶', onTogglePlay:()=>this.togglePlay(),
+      onSwap:()=>this.setState(s=>({swap:!s.swap})),
+      showDetail:false, showCompare:false, showScenario:false, showGuide:false, showAdmin:false, evtActive:false,
+      scrub:{dateLabel:'—',idx:0,max:1,markers:[],startLabel:'',endLabel:'',hint:'',disabled:true,opacity:1,playBg:'#c2410c',cursor:'pointer',onInput:(e)=>this.setState({scrubIdx:+e.target.value,playing:false})},
+      canvasRef:this.canvasRef, stageRef:this.stageRef, tipRef:this.tipRef
+    };
+    if(!this.state.ready) return base;
+
+    const focus=this.state.focus, ms=this.scrubMs();
+    const partners=this.C.filter(c=>c.code!==focus);
+    const rows=partners.map(c=>({c, out:this.disp(this.getOut(c.code,ms)), inb:this.disp(this.getIn(c.code,ms))})).sort((a,b)=>(b.out||0)-(a.out||0));
+    const q=this.state.query.trim().toLowerCase();
+    // leaderboard lists ALL countries (active + unticked) so you can re-tick; unticked are greyed & dropped from the map
+    let lb=(this.allList||this.C).filter(c=>c.code!==focus).map(c=>({c, active:!this.state.removed[c.code], out:this.disp(this.getOut(c.code,ms)), inb:this.disp(this.getIn(c.code,ms))}));
+    if(q) lb=lb.filter(r=>r.c.name.toLowerCase().includes(q)||r.c.code.toLowerCase().includes(q));
+    lb.sort((a,b)=> a.active===b.active ? (b.out||0)-(a.out||0) : (a.active?-1:1));
+    let rk=0; const nf=this.state.noFocus;
+    const leaderboard=lb.map(r=>{ if(r.active) rk++; return {rank:r.active?rk:'·',name:r.c.name,flag:r.c.flag,code:r.c.code,active:r.active,
+      outLabel:nf?'—':this.pct(r.out),inLabel:nf?'':this.pct(r.inb),barW:nf?0:Math.round(Math.min(r.out||0,1.5)/1.5*100),accent:nf?'#c4c8cf':this.colorFor(r.out),
+      opacity:r.active?1:0.4, check:r.active?'✓':'', checkBg:r.active?'#c2410c':'#fff', checkBorder:r.active?'#c2410c':'#c4c8cf',
+      edge:(!nf&&r.c.code===this.state.selected)?'#13202c':'transparent', bg:(!nf&&r.c.code===this.state.selected)?'#eef2f6':'transparent',
+      onToggleActive:(e)=>{ if(e&&e.stopPropagation)e.stopPropagation(); const removed=Object.assign({},this.state.removed); if(removed[r.c.code])delete removed[r.c.code]; else removed[r.c.code]=1; this.applyAdmin({removed}); },
+      onSelect:()=>{ if(this.state.noFocus) return; this.setState({selected:r.c.code,panel:this.state.panel==='compare'||this.state.panel==='scenario'?this.state.panel:'detail'}); }}; });
+
+    const outs=partners.map(c=>this.disp(this.getOut(c.code,ms)));
+    const avgOut=outs.reduce((s,v)=>s+(v||0),0)/(outs.length||1);
+    let exposure=0,hasExp=false; partners.forEach(c=>{ const o=this.OVR[focus+'>'+c.code]; if(o&&o.trade){ hasExp=true; exposure+=o.trade.imports*this.disp(this.getOut(c.code,ms)); } });
+    const topRow=rows[0];
+
+    const markers=this.EV.map(e=>{ const t=Date.parse(e.date); return {label:e.title.length>16?e.title.slice(0,15)+'…':e.title, leftPct:((t-this.tMin)/(this.tMax-this.tMin)*100).toFixed(1)}; }).filter(m=>+m.leftPct>=0&&+m.leftPct<=100);
+    const scrubActive=this.pairHasTime(focus,this.state.selected);
+
+    // scenario sliders + calculator (own main/importing country)
+    const sFocus=this.byCode[this.state.scenImp]?this.state.scenImp:focus;
+    const partnersS=this.C.filter(c=>c.code!==sFocus);
+    const cmpImp=this.byCode[this.state.compareImp]?this.state.compareImp:focus;
+    const scenarioRows=partnersS.map(c=>{ const cur=this.applied(sFocus,c.code,ms).e; const val=this.state.scenario[c.code]!=null?this.state.scenario[c.code]:cur;
+      return {flag:c.flag,name:c.name,code:c.code,valuePct:Math.round(val*100),color:this.colorFor(val),
+        onInput:(e)=>{ const v=+e.target.value/100; this.setState(s=>({scenario:Object.assign({},s.scenario,{[c.code]:v})})); }}; });
+    let baseExp=0,scenExp=0; partnersS.forEach(c=>{ const o=this.OVR[sFocus+'>'+c.code]; if(o&&o.trade){ const be=this.applied(sFocus,c.code,ms).e; const se=this.state.scenario[c.code]!=null?this.state.scenario[c.code]:be; baseExp+=o.trade.imports*be; scenExp+=o.trade.imports*se; } });
+    const dlt=scenExp-baseExp;
+    const scenAvg=scenarioRows.reduce((s,r)=>s+r.valuePct,0)/(scenarioRows.length||1);
+
+    const calcS=this.state.calc; const amt=parseFloat((calcS.amount||'').toString().replace(/[, ]/g,''))||0;
+    const mkRow=(code)=>{ if(!code||!this.byCode[code]) return null; const br=this.applied(sFocus,code,ms).e; const sr=this.state.scenario[code]!=null?this.state.scenario[code]:br; const bd=amt*br, sd=amt*sr, dd=sd-bd;
+      return {code,name:this.byCode[code].name,flag:this.byCode[code].flag, baseRate:this.pct(br), scenRate:this.pct(sr), baseDuty:this.fmtCur(bd,calcS.currency), scenDuty:this.fmtCur(sd,calcS.currency), deltaLabel:(dd>=0?'+':'−')+this.fmtCur(Math.abs(dd),calcS.currency), deltaColor:dd>0?'#c2410c':(dd<0?'#15803d':'#8a909c')}; };
+    const cmp=[calcS.origin,calcS.origin2,calcS.origin3].map(mkRow).filter(Boolean);
+    const rateOf=(code)=>{ const sc=this.state.scenario[code]; return sc!=null?sc:this.applied(sFocus,code,ms).e; };
+    const baseOrigin=calcS.origin; const baseDutyR=this.byCode[baseOrigin]?amt*rateOf(baseOrigin):null;
+    const recommendList=(this.allList||this.C).filter(c=>c.code!==sFocus).map(c=>{ const rt=rateOf(c.code); const duty=amt*rt; const save=baseDutyR!=null?baseDutyR-duty:0; const isBase=c.code===baseOrigin;
+      return {code:c.code,flag:c.flag,name:c.name,rt,rateLabel:this.pct(rt),color:this.colorFor(rt),
+        saveLabel:isBase?'current pick':(save>0?'save '+this.fmtCur(save,calcS.currency):(save<0?'+'+this.fmtCur(-save,calcS.currency):'—')),
+        saveColor:isBase?'#8a909c':(save>0?'#15803d':(save<0?'#c2410c':'#8a909c')) }; })
+      .sort((a,b)=>a.rt-b.rt).slice(0,6).map((r,i)=>Object.assign(r,{rowBg:i===0?'#fdf1ea':'#fff', rowBorder:i===0?'#f0d3bc':'#eef0f3'}));
+    const hsRaw=(this.state.hsCode||'').replace(/[^0-9]/g,'');
+    const hsKey=this.HS[hsRaw]?hsRaw:(this.HS[hsRaw.slice(0,4)]?hsRaw.slice(0,4):(this.HS[hsRaw.slice(0,2)]?hsRaw.slice(0,2):''));
+    const hsDesc=hsKey?this.HS[hsKey]:'';
+    const hsMult=this.HS_MULT[hsRaw]||this.HS_MULT[hsRaw.slice(0,4)]||this.HS_MULT[hsRaw.slice(0,2)]||1;
+    const hsOrigins=[calcS.origin,calcS.origin2,calcS.origin3].filter(c=>this.byCode[c]);
+    const hsRows=hsOrigins.map(code=>{ const br=rateOf(code), rt=br*hsMult; const live=this.liveHs&&this.liveHs[hsRaw+'|'+sFocus+'|'+code];
+      return {code,flag:this.byCode[code].flag,name:this.byCode[code].name, avgLabel:this.pct(br), rateLabel:this.pct(live!=null?live:rt), dutyLabel:this.fmtCur(amt*(live!=null?live:rt),calcS.currency), src:live!=null?'live':'est' }; });
+    const calc={ amount:calcS.amount, currency:calcS.currency, currencies:Object.keys(this.CUR), amountLabel:this.fmtCur(amt,calcS.currency),
+      origin:calcS.origin||'', origin2:calcS.origin2||'', origin3:calcS.origin3||'', compare:cmp, recommend:recommendList,
+      hsCode:this.state.hsCode||'', hsList:Object.keys(this.HS||{}).map(k=>({code:k,desc:this.HS[k]})),
+      hsHasCode:!!hsKey, hsDesc:hsDesc, hsMultLabel:'×'+hsMult.toFixed(1), hsRows:hsRows, hsImpName:this.byCode[sFocus].name,
+      hsLive:!!this.liveHs, hsTag:this.liveHs?'live data':'illustrative',
+      onHs:(e)=>{ const v=e.target.value; this.setState({hsCode:v}); this.maybeLoadHs(v, sFocus); },
+      onAmount:(e)=>this.setState(s=>({calc:Object.assign({},s.calc,{amount:e.target.value})})),
+      onCurrency:(e)=>this.setState(s=>({calc:Object.assign({},s.calc,{currency:e.target.value})})),
+      onOrigin:(e)=>this.setState(s=>({calc:Object.assign({},s.calc,{origin:e.target.value})})),
+      onOrigin2:(e)=>this.setState(s=>({calc:Object.assign({},s.calc,{origin2:e.target.value})})),
+      onOrigin3:(e)=>this.setState(s=>({calc:Object.assign({},s.calc,{origin3:e.target.value})})) };
+
+    // admin rows + draft
+    const adminAll=[...this.baseC, ...this.state.customList];
+    const adminRows=adminAll.map(c=>{ const on=!this.state.removed[c.code]; const isCustom=this.state.customList.some(x=>x.code===c.code);
+      const mfnVal=this.state.mfnOver[c.code]!=null?this.state.mfnOver[c.code]:c.mfn;
+      return {flag:c.flag,name:c.name,code:c.code, check:on?'✓':'', checkBg:on?'#c2410c':'#fff', checkBorder:on?'#c2410c':'#c4c8cf',
+        opacity:on?1:0.45, rowBg:on?'transparent':'#f4f5f7', mfn:String(mfnVal), removeIcon:isCustom?'🗑':'',
+        onToggle:()=>{ const removed=Object.assign({},this.state.removed); if(removed[c.code]) delete removed[c.code]; else removed[c.code]=1; this.applyAdmin({removed}); },
+        onMfn:(e)=>{ const v=parseFloat(e.target.value); const mfnOver=Object.assign({},this.state.mfnOver); if(isNaN(v)) delete mfnOver[c.code]; else mfnOver[c.code]=v; this.applyAdmin({mfnOver}); },
+        onRemove:()=>{ if(!isCustom) return; const customList=this.state.customList.filter(x=>x.code!==c.code); this.applyAdmin({customList}); } }; });
+    const d=this.state.draft;
+    const setDraft=(patch)=>this.setState(s=>({draft:Object.assign({},s.draft,patch,{msg:'',ok:false})}));
+    const draft={ name:d.name,code:d.code,flag:d.flag,lon:d.lon,lat:d.lat,mfn:d.mfn,imports:d.imports, msg:d.msg, msgColor:d.ok?'#15803d':'#c2410c',
+      onName:(e)=>setDraft({name:e.target.value}), onCode:(e)=>setDraft({code:e.target.value.toUpperCase()}), onFlag:(e)=>setDraft({flag:e.target.value}),
+      onLon:(e)=>setDraft({lon:e.target.value}), onLat:(e)=>setDraft({lat:e.target.value}), onMfn:(e)=>setDraft({mfn:e.target.value}), onImports:(e)=>setDraft({imports:e.target.value}),
+      onAdd:()=>{ const name=(d.name||'').trim(), code=(d.code||'').trim().toUpperCase(), lon=parseFloat(d.lon), lat=parseFloat(d.lat), mfn=parseFloat(d.mfn);
+        if(!name||!code){ this.setState(s=>({draft:Object.assign({},s.draft,{msg:'Name and code are required.',ok:false})})); return; }
+        if([...this.baseC,...this.state.customList].some(x=>x.code===code)){ this.setState(s=>({draft:Object.assign({},s.draft,{msg:'That code already exists.',ok:false})})); return; }
+        if(isNaN(lon)||isNaN(lat)){ this.setState(s=>({draft:Object.assign({},s.draft,{msg:'Longitude and latitude must be numbers.',ok:false})})); return; }
+        const country={code,name,flag:(d.flag||'🏳️').trim(),coord:[lon,lat],mfn:isNaN(mfn)?0:mfn,imports:parseFloat(d.imports)||0};
+        const customList=[...this.state.customList, country];
+        this.rebuild(this.state.removed,this.state.mfnOver,customList); this.persist(this.state.removed,this.state.mfnOver,customList);
+        this.setState({customList, draft:{name:'',code:'',flag:'',lon:'',lat:'',mfn:'',imports:'',msg:name+' added.',ok:true,pick:''}}); },
+      pick:d.pick||'', worldOptions:(this.WORLD||[]).filter(w=>![...this.baseC,...this.state.customList].some(x=>x.code===w.code)).map(w=>({code:w.code,label:w.flag+'  '+w.name})),
+      onPick:(e)=>setDraft({pick:e.target.value}),
+      onAddWorld:()=>{ const code=this.state.draft.pick; const w=(this.WORLD||[]).find(x=>x.code===code); if(!w){ this.setState(s=>({draft:Object.assign({},s.draft,{msg:'Pick a country first.',ok:false})})); return; }
+        if([...this.baseC,...this.state.customList].some(x=>x.code===code)){ this.setState(s=>({draft:Object.assign({},s.draft,{msg:'Already added.',ok:false})})); return; }
+        const country={code:w.code,name:w.name,flag:w.flag,coord:w.coord.slice(),mfn:w.mfn,imports:w.imports||0};
+        const customList=[...this.state.customList, country];
+        this.rebuild(this.state.removed,this.state.mfnOver,customList); this.persist(this.state.removed,this.state.mfnOver,customList);
+        this.setState({customList, draft:Object.assign({},this.state.draft,{pick:'',msg:w.name+' added.',ok:true})}); } };
+
+    const en=this.state.entry; const setEn=(patch)=>this.setState(s=>({entry:Object.assign({},s.entry,patch)}));
+    const enOpts=(this.allList||this.C).map(c=>({code:c.code,label:c.flag+'  '+c.name}));
+    const append=(tab,row,okMsg)=>{ if(!this.sheetBacked){ setEn({msg:'⚠ Connect the Sheet first (set PROXY_URL + SHEET_BACKED in wto-loader.js).'}); return; }
+      setEn({msg:'Saving…'});
+      import('./wto-loader.js').then(live=>live.appendRow(tab,row)).then(r=>{ setEn({msg:(r&&r.ok)?okMsg:('Save failed: '+((r&&r.reason)||'error'))}); if(r&&r.ok) setTimeout(()=>this.refreshData(),400); }).catch(e=>setEn({msg:'Save failed: '+e}));
+    };
+    const entry={ countryOptions:enOpts, statusMsg:this.sheetBacked?'Connected to the shared Sheet — entries save for everyone.':'Not connected to a Sheet yet — set PROXY_URL + SHEET_BACKED in wto-loader.js to enable saving.', msg:en.msg,
+      imp:en.imp,exp:en.exp,date:en.date,headline:en.headline,effective:en.effective,
+      onImp:(e)=>setEn({imp:e.target.value}), onExp:(e)=>setEn({exp:e.target.value}), onDate:(e)=>setEn({date:e.target.value}), onHeadline:(e)=>setEn({headline:e.target.value}), onEffective:(e)=>setEn({effective:e.target.value}),
+      onAddTariff:()=>{ const h=parseFloat(en.headline), ef=en.effective===''?h:parseFloat(en.effective); if(!en.date||isNaN(h)){ setEn({msg:'Date and headline % are required.'}); return; }
+        append('Tariffs',{importer:en.imp,exporter:en.exp,date:en.date,headline_pct:h,effective_pct:isNaN(ef)?h:ef}, 'Saved '+en.imp+'→'+en.exp+' '+h+'% on '+en.date); },
+      exImp:en.exImp,exExp:en.exExp,exNote:en.exNote,
+      onExImp:(e)=>setEn({exImp:e.target.value}), onExExp:(e)=>setEn({exExp:e.target.value}), onExNote:(e)=>setEn({exNote:e.target.value}),
+      onAddExempt:()=>{ if(!en.exNote.trim()){ setEn({msg:'Enter an exemption note.'}); return; } append('Exemptions',{importer:en.exImp,exporter:en.exExp,note:en.exNote.trim()}, 'Exemption saved.'); },
+      evDate:en.evDate,evCode:en.evCode,evTitle:en.evTitle,evDesc:en.evDesc,
+      onEvDate:(e)=>setEn({evDate:e.target.value}), onEvCode:(e)=>setEn({evCode:e.target.value}), onEvTitle:(e)=>setEn({evTitle:e.target.value}), onEvDesc:(e)=>setEn({evDesc:e.target.value}),
+      onAddEvent:()=>{ if(!en.evDate||!en.evTitle.trim()){ setEn({msg:'Event date and title are required.'}); return; } append('Events',{date:en.evDate,code:en.evCode,title:en.evTitle.trim(),description:en.evDesc.trim()}, 'Event saved.'); } };
+
+    const evt=this.state.activeEvent!=null?this.EV[this.state.activeEvent]:null;
+
+    const netOpts=(this.allList||this.C).map(c=>({code:c.code,label:c.flag+'  '+c.name}));
+    const netObj={ a:this.state.netA||'', b:this.state.netB||'', options:netOpts,
+      onA:(e)=>this.setState({netA:e.target.value}), onB:(e)=>this.setState({netB:e.target.value}),
+      onAddPair:()=>{ const a=this.state.netA, b=this.state.netB; if(!a||!b||a===b)return; this.setState(s=>{ if(s.netPairs.some(p=>(p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a)))return {}; return {netPairs:[...s.netPairs,[a,b]]}; }); },
+      onClear:()=>this.setState({netPairs:[]}),
+      onCloseBuilder:()=>this.setState({netBuilderOpen:false}),
+      onOpenBuilder:()=>this.setState({netBuilderOpen:true}),
+      pairs:(this.state.netPairs||[]).filter(p=>this.byCode[p[0]]&&this.byCode[p[1]]).map((p,i)=>({label:this.byCode[p[0]].flag+' '+p[0]+'  ↔  '+this.byCode[p[1]].flag+' '+p[1], onRemove:()=>this.setState(s=>({netPairs:s.netPairs.filter((_,idx)=>idx!==i)}))})),
+      hint:(this.state.netPairs&&this.state.netPairs.length)?(this.state.netPairs.length+' pair(s) shown — add more, or Clear to show every ticked country'):'Add specific pairs (e.g. Japan ↔ South Korea), or leave empty to web all ticked countries' };
+
+    const guideSteps=[
+      {n:'1',title:'Pick a focus country',body:'Use the Focus selector (top-left). Every arc, rate and stat is measured from that country outward. The map auto-rotates to centre it.'},
+      {n:'2',title:'Read the arcs',body:'A coloured arc runs from the focus country to each partner. Colour = how high the tariff is (blue → red). A second blue arc shows the partner’s reciprocal tariff back.'},
+      {n:'3',title:'Click a country',body:'Click any marker (or a leaderboard row) to open the detail panel: full history chart, exemptions and sector breakdown for that pair.'},
+      {n:'4',title:'Replay the timeline',body:'When a pair has dated policy changes, the bottom slider lights up — drag or press play to watch rates evolve across 2024–25 on the map.'},
+      {n:'5',title:'Model a scenario',body:'Open Scenario, drag a country’s slider to a hypothetical rate, then use the shipment calculator to see the duty change on your own cargo value.'},
+      {n:'6',title:'Manage & export',body:'Manage lets you show/hide countries, edit MFN baselines or add new ones. PDF prints the current view with a full-size map.'},
+    ];
+    const glossary=[
+      {term:'Tariff (effective rate)',def:'The import tax actually collected once exemptions and carve-outs are applied — what you really pay. This is the single rate shown across the dashboard.'},
+      {term:'MFN (Most-Favoured-Nation)',def:'A country’s default applied tariff that it charges all WTO partners when no special measure exists.'},
+      {term:'Reciprocal tariff',def:'The tariff the partner country imposes back on the focus country’s exports.'},
+      {term:'Trade exposed',def:'The dollar value of imports that currently sit under a tariff (import value × effective rate).'},
+      {term:'Trade-weighted impact',def:'Tariff cost scaled by how much trade actually flows — a big rate on tiny trade matters less.'},
+      {term:'Carve-out / exemption',def:'A product or rule excluded from the tariff (e.g. USMCA-compliant goods, semiconductors), which lowers the effective rate.'},
+      {term:'Scenario',def:'A sandbox where you set hypothetical rates to test “what-if” outcomes without changing the real data.'},
+    ];
+
+    return Object.assign(base,{
+      ready:true, meta:this.META,
+      focusName:this.byCode[focus].name, focusFlag:this.byCode[focus].flag,
+      focusBadge: this.state.noFocus ? 'Network · all selected pairs' : ('Focus · '+this.byCode[focus].flag+' '+this.byCode[focus].name),
+      focusOptions:(this.allList||this.C).map(c=>({code:c.code,label:c.flag+'  '+c.name})),
+      kpi:{avgOut:this.state.noFocus?'—':this.pct(avgOut),count:this.state.noFocus?'0':partners.length,exposure:(this.state.noFocus||!hasExp)?'—':this.money(exposure),
+        topName:this.state.noFocus?'—':(topRow?topRow.c.name:'—'),topFlag:this.state.noFocus?'':(topRow?topRow.c.flag:''),topPct:this.state.noFocus?'—':(topRow?this.pct(topRow.out):'—')},
+      lbHint:this.state.noFocus?'Pick a focus country to rank its tariffs':'',
+      leaderboard,
+      showDetail:!this.state.noFocus && this.state.panel==='detail', showCompare:this.state.panel==='compare', showScenario:this.state.panel==='scenario',
+      showGuide:this.state.panel==='guide', showAdmin:this.state.panel==='admin',
+      sel:this.detailFor(this.state.selected),
+      compareCards: this.state.compareSet.filter(c=>this.byCode[c]&&c!==cmpImp).map(code=>Object.assign(this.miniFor(cmpImp, code), {
+        onPick:(e)=>{ const v=e.target.value; this.setState(s=>({compareSet:s.compareSet.map(x=>x===code?v:x)})); },
+        onRemove:()=>this.setState(s=>({compareSet:s.compareSet.filter(x=>x!==code)})), canRemove:this.state.compareSet.filter(c=>this.byCode[c]&&c!==cmpImp).length>1 })),
+      cmpHead:{ imp:cmpImp, onImp:(e)=>this.setState({compareImp:e.target.value}), options:(this.allList||this.C).map(c=>({code:c.code,label:c.flag+'  '+c.name})),
+        addVal:this.state.compareAdd||'', onAddPick:(e)=>this.setState({compareAdd:e.target.value}),
+        addOptions:(this.allList||this.C).filter(c=>c.code!==cmpImp&&!this.state.compareSet.includes(c.code)).map(c=>({code:c.code,label:c.flag+'  '+c.name})),
+        onAdd:()=>{ const code=this.state.compareAdd||((this.allList||this.C).find(c=>c.code!==cmpImp&&!this.state.compareSet.includes(c.code))||{}).code; if(!code)return; this.setState(s=>({compareSet:s.compareSet.includes(code)?s.compareSet:[...s.compareSet,code], compareAdd:''})); } },
+      compareExpOptions:(this.allList||this.C).filter(c=>c.code!==cmpImp).map(c=>({code:c.code,name:c.name})),
+      scen:{ imp:sFocus, impName:this.byCode[sFocus].name, onImp:(e)=>this.setState({scenImp:e.target.value, scenario:{}}), options:(this.allList||this.C).map(c=>({code:c.code,label:c.flag+'  '+c.name})) },
+      scenPartnerOptions:(this.allList||this.C).filter(c=>c.code!==sFocus).map(c=>({code:c.code,name:c.name})),
+      net:netObj,
+      partnerOptions:(this.allList||this.C).filter(c=>c.code!==focus).map(c=>({code:c.code,name:c.name})),
+      scenarioRows, onResetScenario:()=>this.setState({scenario:{}}),
+      scenarioSummary:{ scenExposure:this.money(scenExp), baseExposure:this.money(baseExp), avg:this.pct(scenAvg/100),
+        delta:(dlt>=0?'+':'−')+this.money(Math.abs(dlt)), deltaColor:dlt>0?'#e8743a':(dlt<0?'#7cc24a':'#9fb2c6') },
+      calc, guideSteps, glossary, adminRows, draft, entry,
+      onResetAdmin:()=>{ this.rebuild({},{},[]); this.persist({},{},[]); this.setState({removed:{},mfnOver:{},customList:[]}); },
+      evtActive:evt!=null, evt:evt?{title:evt.title,desc:evt.desc,dateLabel:new Date(Date.parse(evt.date)).toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'})}:{},
+      evtX:this.evtPos?this.evtPos[0]:0, evtY:this.evtPos?this.evtPos[1]:0, onCloseEvent:()=>this.setState({activeEvent:null}),
+      scrub:{ dateLabel:new Date(ms).toLocaleDateString('en',{day:'numeric',month:'long',year:'numeric'}), idx:this.state.scrubIdx, max:this.allDates.length-1, markers,
+        disabled:!scrubActive, opacity:scrubActive?1:0.45, playBg:scrubActive?'#c2410c':'#c9c1b0', cursor:scrubActive?'pointer':'not-allowed',
+        hint: scrubActive?'drag to replay '+focus+' ⇄ '+this.state.selected:'select a pair with policy changes to replay',
+        startLabel:new Date(this.tMin).toLocaleDateString('en',{month:'short',year:'2-digit'}), endLabel:new Date(this.tMax).toLocaleDateString('en',{month:'short',year:'2-digit'}), onInput:base.scrub.onInput }
+    });
+  }
+}
+</script>
+</body>
+</html>
